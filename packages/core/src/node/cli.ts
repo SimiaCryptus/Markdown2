@@ -1,5 +1,7 @@
 import { parseArgs } from 'node:util';
+import { defaultHandlers } from '../handlers.js';
 import { parse } from '../parser.js';
+import { renderHtml } from '../render.js';
 import { resolveDocument } from '../runtime.js';
 import { normaliseDocument, normaliseResolved, toFixtureJson } from '../serialize.js';
 import type { Diagnostic, Limits } from '../types.js';
@@ -19,6 +21,7 @@ Commands:
   tree       Print the normalised parse tree (no decoding).
   resolve    Decode resources and print the resolved tree.
   validate   Print diagnostics. Exit status 1 if there are any.
+  render     Decode resources and print an HTML rendering.
 
 Options:
   --allow-remote        Resolve https: uri resources (SSRF-guarded).
@@ -28,7 +31,7 @@ Options:
   -h, --help            Show this help.
 `;
 
-type Command = 'tree' | 'resolve' | 'validate';
+type Command = 'tree' | 'resolve' | 'validate' | 'render';
 
 interface CliOptions {
   command: Command;
@@ -39,7 +42,7 @@ interface CliOptions {
 
 class UsageError extends Error {}
 
-const isCommand = (s: string): s is Command => s === 'tree' || s === 'resolve' || s === 'validate';
+const isCommand = (s: string): s is Command => s === 'tree' || s === 'resolve' || s === 'validate' || s === 'render';
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 function positiveInt(raw: string | undefined, flag: string): number | undefined {
@@ -104,15 +107,21 @@ export async function main(argv: readonly string[], io: CliIo): Promise<number> 
     io.stdout(toFixtureJson(normaliseDocument(doc)));
     return 0;
   }
+  const handlers = defaultHandlers();
 
   const diagnostics: Diagnostic[] = [...doc.diagnostics];
   const resolved = await resolveDocument(doc, {
     limits: opts.limits,
     diagnostics,
+    handledTypes: handlers.types('view'),
     ...(opts.allowRemote ? { uriPolicy: createServerUriPolicy() } : {}),
   });
   if (opts.command === 'resolve') {
     io.stdout(toFixtureJson(normaliseResolved(resolved)));
+    return 0;
+  }
+  if (opts.command === 'render') {
+    io.stdout(`${await renderHtml(resolved, { handlers })}\n`);
     return 0;
   }
 

@@ -1,0 +1,83 @@
+import {
+  collectResources,
+  parse,
+  renderHtml,
+  resolveDocument,
+  type Decoder,
+  type DecoderRegistry,
+  type Diagnostic,
+  type GrantSet,
+  type HandlerRegistry,
+  type ResolvedNode,
+  type ResolvedResource,
+  type ResourceNode,
+  type UriPolicy,
+} from '@markdown2/core';
+
+export interface PipelineOptions {
+  registry: DecoderRegistry;
+  grants: GrantSet;
+  handlers: HandlerRegistry;
+  uriPolicy?: UriPolicy;
+  signal?: AbortSignal;
+}
+
+export interface PipelineResult {
+  resolved: ResolvedNode[];
+  diagnostics: Diagnostic[];
+  html: string;
+  /** Every resource in the tree, by node id. */
+  resources: Map<string, ResolvedResource>;
+}
+
+/** Parse, decode and render. DOM-free, so it can move into a worker later. */
+export async function runPipeline(src: string, o: PipelineOptions): Promise<PipelineResult> {
+  const doc = parse(src);
+  const diagnostics: Diagnostic[] = [...doc.diagnostics];
+  const resolved = await resolveDocument(doc, {
+    registry: o.registry,
+    grants: o.grants,
+    diagnostics,
+    handledTypes: o.handlers.types('view'),
+    ...(o.uriPolicy ? { uriPolicy: o.uriPolicy } : {}),
+    ...(o.signal ? { signal: o.signal } : {}),
+  });
+  const html = await renderHtml(resolved, { handlers: o.handlers });
+  const resources = new Map(collectResources(resolved).map((e) => [e.node.id, e] as const));
+  return { resolved, diagnostics, html, resources };
+}
+
+export interface Gate {
+  stage: number;
+  decoder: Decoder;
+}
+
+/** Capability-gated stages of a node that have no grant yet. */
+export function gatedStages(node: ResourceNode, registry: DecoderRegistry, grants: GrantSet): Gate[] {
+  const out: Gate[] = [];
+  node.resource.encoding.forEach((id, stage) => {
+    const decoder = registry.get(id);
+    if (decoder?.capability !== undefined && !grants.has(node, stage)) out.push({ stage, decoder });
+  });
+  return out;
+}
+
+/**
+ * The next stage the user should grant. When every gated stage already holds a
+ * grant but the node is still locked, one of the keys was rejected. Which one
+ * is unknown, so all of this node's gated grants are revoked and the user
+ * starts again from the outermost layer.
+ */
+export function nextGate(node: ResourceNode, registry: DecoderRegistry, grants: GrantSet): Gate | null {
+  const pending = gatedStages(node, registry, grants);
+  if (pending[0]) return pending[0];
+  node.resource.encoding.forEach((id, stage) => {
+    if (registry.get(id)?.capability !== undefined) grants.revoke(node, stage);
+  });
+  return gatedStages(node, registry, grants)[0] ?? null;
+}
+
+export function describeNode(node: ResourceNode): string {
+  const a = node.resource.attributes;
+  return a.get('title') ?? a.get('filename') ?? node.resource.type ?? '(untyped resource)';
+}

@@ -1,3 +1,4 @@
+import { encodeBase64 } from './base64.js';
 import type { ResolvedNode } from './runtime.js';
 import type { Document, DocNode, ResourceNode } from './types.js';
 
@@ -24,12 +25,6 @@ export type NormalisedNode =
       children?: NormalisedNode[];
     };
 
-function toBase64(u: Uint8Array): string {
-  let s = '';
-  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
-  return btoa(s);
-}
-
 function resourceBase(n: ResourceNode): Extract<NormalisedNode, { kind: 'resource' }> {
   const attributes: Record<string, string> = {};
   const entries = [...n.resource.attributes].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -47,7 +42,7 @@ function resourceBase(n: ResourceNode): Extract<NormalisedNode, { kind: 'resourc
   try {
     out.payload = new TextDecoder('utf-8', { fatal: true }).decode(n.resource.payload);
   } catch {
-    out.payloadBase64 = toBase64(n.resource.payload);
+    out.payloadBase64 = encodeBase64(n.resource.payload);
   }
   if (n.structuralError) out.error = n.structuralError;
   return out;

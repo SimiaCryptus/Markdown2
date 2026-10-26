@@ -91,6 +91,14 @@ describe('uri resolution (C.10)', () => {
     expect(res.result.state).toBe('decoded');
     expect(res.node.resource.type).toBe('image/png');
   });
+  it('a per-node grant authorises resolution through the policy', async () => {
+    const uriPolicy: UriPolicy = { allows: () => false, resolve: () => Promise.resolve(new Uint8Array([1])) };
+    const doc = parse('<<<U type="a/b" encoding="uri"\nhttps://example.org/x\nU\n');
+    const grants = new GrantSet();
+    expect(asResource((await resolveDocument(doc, { uriPolicy, grants }))[0]).result.state).toBe('locked');
+    grants.grant(doc.children[0] as ResourceNode, 0);
+    expect(asResource((await resolveDocument(doc, { uriPolicy, grants }))[0]).result.state).toBe('decoded');
+  });
 });
 
 describe('normalised tree', () => {

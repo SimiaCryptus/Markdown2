@@ -43,3 +43,23 @@ Seeded from plan.md §11; additions below.
      - caps the body size while it streams.
      Consider making connect-time checking normative; a pre-flight DNS check alone is not
      sufficient.
+17. **Prose rendering in core (M3 barebones)**: `renderHtml` escapes prose into paragraphs and
+     recognises top-level fenced code only (needed for §7.2 aliases). Full CommonMark rendering
+     is deferred to the micromark/rehype path; this is an implementation gap, not a spec issue.
+18. **`alternate` with nothing renderable**: A.1 says "render at most one of the two". When
+     neither the target nor any alternate can be rendered, the implementation shows the target's
+     fallback and suppresses the alternates. Please confirm that hiding the alternates' stubs is
+     acceptable under §2 principle 6 ("shown, not dropped").
+19. **Displaying metadata**: decoded `metadata` nodes are consumed and not displayed. Failed or
+     locked metadata still shows its fallback stub so the failure stays visible.
+20. **Handler failure**: §5.5 has no state for a decoded resource whose handler rejects the bytes
+     (e.g. invalid JSON). The implementation keeps the state `decoded` and shows the fallback
+     with error `handler-error`. Consider naming this in §6.2.
+21. **Rejected key vs. tampered ciphertext** (PWA `age` decoder): the `age` library reports a wrong
+     key and corrupted ciphertext through the same kind of error, so the PWA treats every
+     decryption failure as `key-rejected` (stays `locked`). §5.4 suggests tampering should be
+     `failed`. Both fail closed; an encryption profile should define how to tell them apart.
+22. **SSRF in browsers**: §5.5's address rules cannot be enforced by a browser, because `fetch`
+     exposes no resolved IP. The PWA relies on locked-by-default `uri`, a user-configured
+     `https:` origin allowlist, per-resource grants, `credentials: 'omit'` and CSP `connect-src`.
+     Consider stating in §5.5 that the address rules bind server-side renderers only.

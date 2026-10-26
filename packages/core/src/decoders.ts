@@ -149,7 +149,11 @@ export const uriDecoder: Decoder = {
   async decode(input, ctx) {
     const uri = new TextDecoder().decode(input).trim();
     const policy = ctx.uriPolicy;
-    if (!policy?.allows(uri)) throw new DecodeError('uri not permitted');
+    // Either a per-node grant (§5.5) or the reader policy authorises resolution.
+    // Resolution itself always goes through the policy, which keeps its own checks.
+    if (policy === undefined || (ctx.grant === undefined && !policy.allows(uri))) {
+      throw new DecodeError('uri not permitted');
+    }
     const bytes = await policy.resolve(uri, ctx.signal);
     ctx.quota.charge(bytes.length);
     return bytes; // bytes only: the declared type stays authoritative

@@ -1,0 +1,13 @@
+{
+  "name": "Markdown2",
+  "short_name": "Markdown2",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#00695c",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "file_handlers": [{ "action": "/", "accept": { "text/markdown": [".md", ".markdown"] } }],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "share_target": { "action": "/", "method": "GET", "params": { "title": "title", "text": "text" } }
+}

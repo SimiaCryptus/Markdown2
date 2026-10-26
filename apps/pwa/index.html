@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: ws:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#00695c" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <title>Markdown2</title>
+  </head>
+  <body>
+    <header>
+      <h1>Markdown2</h1>
+      <button id="open" type="button">Open…</button>
+      <button id="save-doc" type="button">Save</button>
+      <button id="policy" type="button">Remote resources…</button>
+      <button id="forget" type="button">Forget keys</button>
+      <span id="status" role="status"></span>
+      <button id="update" type="button" hidden>Update available. Reload</button>
+    </header>
+    <main>
+      <textarea id="editor" spellcheck="false" aria-label="Markdown2 source"></textarea>
+      <section id="preview" aria-label="Preview"></section>
+    </main>
+    <aside aria-labelledby="diag-title">
+      <h2 id="diag-title">Diagnostics</h2>
+      <ul id="diag-list"></ul>
+    </aside>
+
+    <dialog id="unlock" aria-labelledby="unlock-title">
+      <form method="dialog">
+        <h2 id="unlock-title">Unlock resource</h2>
+        <p id="unlock-desc"></p>
+        <fieldset>
+          <legend>Key type</legend>
+          <label><input type="radio" name="kind" value="passphrase" checked /> Passphrase</label>
+          <label><input type="radio" name="kind" value="identity" /> age identity (AGE-SECRET-KEY-1…)</label>
+        </fieldset>
+        <label>Key <input type="password" name="key" autocomplete="off" required /></label>
+        <menu>
+          <button value="cancel" formnovalidate>Cancel</button>
+          <button value="ok">Unlock</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <input id="file-input" type="file" accept=".md,.markdown,text/markdown" hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

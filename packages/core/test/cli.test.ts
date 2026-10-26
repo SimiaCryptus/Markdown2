@@ -35,6 +35,12 @@ describe('m2 CLI', () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain('"state": "decoded"');
   });
+  it('render prints HTML', async () => {
+    const r = await run(['render', 'doc.md'], { 'doc.md': good });
+    expect(r.code).toBe(0);
+    expect(r.out).toContain('<p># Title</p>');
+    expect(r.out).toContain('<pre class="m2-text">hi</pre>');
+  });
 
   it('validate reports structural and decode diagnostics', async () => {
     expect(await run(['validate', 'doc.md'], { 'doc.md': good })).toMatchObject({ code: 0, out: '' });

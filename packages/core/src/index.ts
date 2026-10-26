@@ -8,3 +8,6 @@ export * from './serialize.js';
 export * from './address.js';
 export * from './save.js';
 export * from './rel.js';
+export * from './html.js';
+export * from './handlers.js';
+export * from './render.js';
