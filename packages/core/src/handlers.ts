@@ -137,5 +137,5 @@ export const FENCE_ALIASES: Readonly<Record<string, string>> = {
 
 export function fenceAliasType(info: string): string | undefined {
   const lang = info.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
-  return FENCE_ALIASES[lang];
+  return Object.hasOwn(FENCE_ALIASES, lang) ? FENCE_ALIASES[lang] : undefined;
 }

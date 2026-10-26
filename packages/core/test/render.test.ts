@@ -185,3 +185,19 @@ describe('fence aliases (§7.2, F.3)', () => {
     expect(await render('```\nopen\n')).toContain('<pre><code>open\n</code></pre>');
   });
 });
+describe('prototype keys never act as table entries', () => {
+  it('renders types and fences named after Object.prototype members', async () => {
+    const out = await render('<<<X type="constructor"\nx\nX\n\n```constructor\ny\n```\n');
+    expect(out).toContain('m2-fallback');
+    expect(out).not.toContain('Did you mean');
+    expect(out).toContain('<code class="language-constructor">y</code>');
+  });
+});
+describe('prose rendering', () => {
+  it('renders Markdown structure between resources, escaped', async () => {
+    const out = await render('# Head\n\n- *a*\n- b\n<<<T type="text/plain"\nx\nT\n> quote <i>\n');
+    expect(out).toContain('<h1>Head</h1>');
+    expect(out).toContain('<ul>\n<li><em>a</em></li>\n<li>b</li>\n</ul>');
+    expect(out).toContain('<blockquote>\n<p>quote &lt;i&gt;</p>\n</blockquote>');
+  });
+});

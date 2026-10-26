@@ -23,6 +23,8 @@ describe('safe saving (§6.2, H.4)', () => {
   });
   it('svg is active even when declared', () => {
     expect(safeSaveName(node('type="image/svg+xml"'), 'decoded').name).toBe('resource-0.bin');
+    expect(safeSaveName(node('type="constructor"'), 'decoded').name).toBe('resource-0.bin');
+    expect(safeSaveName(node('type="__proto__"'), 'decoded').name).toBe('resource-0.bin');
   });
   it('strips paths, bidi controls and inner dots', () => {
     expect(safeSaveName(node('type="a/b" filename="../../etc/evil.exe"'), 'decoded')).toEqual({

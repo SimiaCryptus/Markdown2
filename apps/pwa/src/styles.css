@@ -21,6 +21,8 @@ aside h2 { font-size: 1rem; }
 .m2-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
 .m2-image { max-width: 100%; }
 .m2-sandbox { width: 100%; border: 0; }
+blockquote { margin: 0.5rem 0; padding-left: 1rem; border-left: 3px solid #ccc; color: #444; }
+.m2-prose-image::before { content: '🖼 '; }
 pre { white-space: pre-wrap; background: #f6f6f6; padding: 0.5rem; }
 dialog fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
 dialog label { display: block; margin: 0.25rem 0; }

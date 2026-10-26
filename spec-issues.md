@@ -43,9 +43,13 @@ Seeded from plan.md §11; additions below.
      - caps the body size while it streams.
      Consider making connect-time checking normative; a pre-flight DNS check alone is not
      sufficient.
-17. **Prose rendering in core (M3 barebones)**: `renderHtml` escapes prose into paragraphs and
-     recognises top-level fenced code only (needed for §7.2 aliases). Full CommonMark rendering
-     is deferred to the micromark/rehype path; this is an implementation gap, not a spec issue.
+17. **Prose rendering in core**: `renderMarkdown` renders a safe CommonMark subset: headings,
+      thematic breaks, fenced and indented code, block quotes, lists, emphasis, code spans,
+      escapes, entities, inline links and autolinks. Raw HTML is always escaped. Links are limited to
+      `http:`, `https:`, `mailto:` and relative references. Prose images render as links and are
+      never fetched, because rendering must not grant network access (§5.5, §11). Reference links
+      and HTML blocks are not supported. Full CommonMark fidelity remains the micromark/rehype
+      target; this is an implementation gap, not a spec issue.
 18. **`alternate` with nothing renderable**: A.1 says "render at most one of the two". When
      neither the target nor any alternate can be rendered, the implementation shows the target's
      fallback and suppresses the alternates. Please confirm that hiding the alternates' stubs is

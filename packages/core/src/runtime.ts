@@ -69,7 +69,8 @@ export function hasHandler(handled: ReadonlySet<string>, type: string | undefine
 
 export function fallbackFor(node: ResourceNode, result: StateResult): Fallback {
   const essence = typeEssence(node.resource.type);
-  const suggestion = essence ? DID_YOU_MEAN[essence] : undefined;
+  // Own keys only: a type such as "constructor" must not hit Object.prototype.
+  const suggestion = essence !== undefined && Object.hasOwn(DID_YOU_MEAN, essence) ? DID_YOU_MEAN[essence] : undefined;
   return {
     label: node.resource.attributes.get('title') ?? node.resource.attributes.get('filename'),
     type: node.resource.type,

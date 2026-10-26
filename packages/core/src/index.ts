@@ -10,4 +10,5 @@ export * from './save.js';
 export * from './rel.js';
 export * from './html.js';
 export * from './handlers.js';
+export * from './markdown.js';
 export * from './render.js';

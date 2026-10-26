@@ -1,5 +1,6 @@
 import { defaultHandlers, fenceAliasType, type HandlerRegistry } from './handlers.js';
 import { escapeHtml, sandboxFrame } from './html.js';
+import { renderMarkdown } from './markdown.js';
 import { analyseRels, effectiveRel } from './rel.js';
 import { fallbackFor, typeEssence, type Fallback, type ResolvedNode, type ResolvedResource } from './runtime.js';
 import { safeSaveName } from './save.js';
@@ -57,6 +58,7 @@ async function renderResource(entry: ResolvedResource, handlers: HandlerRegistry
   }
 }
 
+/** Fenced code in prose: compatibility aliases (§7.2) select a handler, else plain code. */
 async function renderFence(info: string, body: string, handlers: HandlerRegistry): Promise<string> {
   const lang = info.split(/\s+/)[0] ?? '';
   const type = fenceAliasType(lang);
@@ -71,51 +73,6 @@ async function renderFence(info: string, body: string, handlers: HandlerRegistry
   }
   const cls = lang === '' ? '' : ` class="language-${escapeHtml(lang)}"`;
   return `<pre><code${cls}>${escapeHtml(body)}</code></pre>`;
-}
-
-const OPEN_FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-
-function isFenceClose(line: string, run: string): boolean {
-  const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line)?.[1];
-  return close?.startsWith(run.charAt(0)) === true && close.length >= run.length;
-}
-
-/**
- * Placeholder prose renderer (spec-issues #17): escaped paragraphs and
- * top-level fenced code only. Everything is escaped, so raw HTML in prose is
- * never trusted. Full CommonMark rendering comes with the micromark path.
- */
-async function renderProse(text: string, handlers: HandlerRegistry): Promise<string> {
-  const lines = text.split(/\r?\n/);
-  const out: string[] = [];
-  let para: string[] = [];
-  const flush = (): void => {
-    if (para.length > 0) {
-      out.push(`<p>${escapeHtml(para.join('\n'))}</p>`);
-      para = [];
-    }
-  };
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i] ?? '';
-    const open = OPEN_FENCE.exec(line);
-    const run = open?.[1] ?? '';
-    const info = (open?.[2] ?? '').trim();
-    if (open && !(run.startsWith('`') && info.includes('`'))) {
-      flush();
-      const body: string[] = [];
-      i++;
-      while (i < lines.length && !isFenceClose(lines[i] ?? '', run)) body.push(lines[i++] ?? '');
-      out.push(await renderFence(info, body.join('\n'), handlers));
-      i++;
-      continue;
-    }
-    if (/^\s*$/.test(line)) flush();
-    else para.push(line);
-    i++;
-  }
-  flush();
-  return out.join('\n');
 }
 
 function attrString(attrs: Readonly<Record<string, string>>): string {
@@ -147,10 +104,11 @@ async function renderLevel(nodes: readonly ResolvedNode[], handlers: HandlerRegi
     }
   }
 
+  const fence = (info: string, body: string): Promise<string> => renderFence(info, body, handlers);
   const out: string[] = [];
   for (const n of nodes) {
     if (n.kind === 'prose') {
-      if (/\S/.test(n.text)) out.push(await renderProse(n.text, handlers));
+      if (/\S/.test(n.text)) out.push(await renderMarkdown(n.text, { fence }));
       continue;
     }
     const id = n.node.id;

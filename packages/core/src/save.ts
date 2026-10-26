@@ -95,7 +95,8 @@ export function safeSaveName(node: ResourceNode, form: 'raw' | 'decoded'): SaveN
   if (form === 'raw') return { name: `${stem}.txt` };
   if (ext !== '' && PASSIVE_EXTENSIONS.has(ext)) return { name: `${stem}.${ext}` };
 
-  const typeExt = PASSIVE_TYPE_EXTENSIONS[typeEssence(node.resource.type) ?? ''];
+  const essence = typeEssence(node.resource.type) ?? '';
+  const typeExt = Object.hasOwn(PASSIVE_TYPE_EXTENSIONS, essence) ? PASSIVE_TYPE_EXTENSIONS[essence] : undefined;
   const name = `${stem}.${typeExt ?? 'bin'}`;
   return ext !== '' ? { name, requested: cleaned } : { name };
 }

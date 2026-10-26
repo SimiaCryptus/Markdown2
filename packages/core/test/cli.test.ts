@@ -38,7 +38,7 @@ describe('m2 CLI', () => {
   it('render prints HTML', async () => {
     const r = await run(['render', 'doc.md'], { 'doc.md': good });
     expect(r.code).toBe(0);
-    expect(r.out).toContain('<p># Title</p>');
+    expect(r.out).toContain('<h1>Title</h1>');
     expect(r.out).toContain('<pre class="m2-text">hi</pre>');
   });
 
