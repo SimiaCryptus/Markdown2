@@ -77,7 +77,7 @@ const OPEN_FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 function isFenceClose(line: string, run: string): boolean {
   const close = /^ {0,3}(`{3,}|~{3,})[ \t]*$/.exec(line)?.[1];
-  return close !== undefined && close.charAt(0) === run.charAt(0) && close.length >= run.length;
+  return close?.startsWith(run.charAt(0)) === true && close.length >= run.length;
 }
 
 /**

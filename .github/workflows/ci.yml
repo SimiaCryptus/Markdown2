@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 concurrency:
@@ -27,9 +27,9 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+          cache-dependency-path: packages/core/package-lock.json
 
       - name: Install
-        working-directory: .
         run: npm ci
 
       - name: Quality gate (fail-at-end)
@@ -44,22 +44,23 @@ jobs:
             packages/core/coverage/
             packages/core/reports/
           if-no-files-found: ignore
-   pwa:
-     name: pwa
-     runs-on: ubuntu-latest
-     defaults:
-       run:
-         working-directory: apps/pwa
-     steps:
-       - uses: actions/checkout@v4
-       - uses: actions/setup-node@v4
-         with:
-           node-version: 22
-       - name: Install
-         run: npm install
-       - name: Typecheck
-         run: npm run typecheck
-       - name: Test
-         run: npm test
-       - name: Build
-         run: npm run build
+
+  pwa:
+    name: pwa
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/pwa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build

@@ -173,4 +173,15 @@ describe('fence aliases (§7.2, F.3)', () => {
     expect(await render('```json\n{\n```\n')).toContain('<code class="language-json">{</code>');
     expect(await render('```mermaid\ngraph TD\n```\n')).toContain('language-mermaid');
   });
+  it('closes only on a matching fence of at least the opening length', async () => {
+    // Tilde fence is not closed by backticks.
+    const tilde = await render('~~~python\na\n```\nb\n~~~\n');
+    expect(tilde).toContain('<code class="language-python">a\n```\nb</code>');
+    // Four-backtick fence is not closed by three, but is closed by five.
+    const long = await render('````\nx\n```\ny\n`````\nafter\n');
+    expect(long).toContain('<pre><code>x\n```\ny</code></pre>');
+    expect(long).toContain('<p>after</p>');
+    // An unclosed fence runs to the end of the prose.
+    expect(await render('```\nopen\n')).toContain('<pre><code>open\n</code></pre>');
+  });
 });
