@@ -76,11 +76,11 @@ export const textHandler: Handler = {
   render: (bytes) => Promise.resolve(`<pre class="m2-text">${escapeHtml(lenientUtf8.decode(bytes))}</pre>`),
 };
 
-/** The Markdown2 handler: renders the nested document (§3.3). */
+/** The Markdown2 handler: renders the nested `md2-document` (§3.3, style.md §4.2). */
 export const markdownHandler: Handler = {
   types: ['text/markdown'],
   capabilities: ['view'],
-  render: (_bytes, ctx) => ctx.children().then((html) => `<div class="m2-document">${html}</div>`),
+  render: (_bytes, ctx) => ctx.children(),
 };
 
 export const jsonHandler: Handler = {

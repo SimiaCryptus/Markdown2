@@ -1,29 +1,47 @@
-* { box-sizing: border-box; }
+/*
+ * Cascade origins as layers (style.md §6.1). The order is declared here first;
+ * the adopted cascade sheet repeats it. Everything that styles the preview
+ * lives in m2-ua so document styles can override it. Unlayered rules below
+ * style reader chrome only, which document styles can never select.
+ */
+@layer m2-ua, m2-user, m2-author;
+
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
   display: grid;
   grid-template-rows: auto 1fr auto;
   height: 100vh;
+  box-sizing: border-box;
 }
 header { display: flex; gap: 0.5rem; align-items: center; padding: 0.5rem 1rem; background: #00695c; color: #fff; }
 header h1 { font-size: 1.1rem; margin: 0 1rem 0 0; }
 #status { margin-left: auto; }
 main { display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
-#editor { width: 100%; height: 100%; border: 0; border-right: 1px solid #ccc; padding: 1rem; font: 13px/1.5 ui-monospace, monospace; resize: none; }
+#editor { box-sizing: border-box; width: 100%; height: 100%; border: 0; border-right: 1px solid #ccc; padding: 1rem; font: 13px/1.5 ui-monospace, monospace; resize: none; }
 #preview { overflow: auto; padding: 1rem; }
-aside { max-height: 25vh; overflow: auto; border-top: 1px solid #ccc; padding: 0 1rem; font-size: 0.9rem; }
-aside h2 { font-size: 1rem; }
-#diag-list button { font: inherit; background: none; border: 0; color: #b00020; cursor: pointer; text-align: left; }
-.m2-resource { border: 1px solid #ddd; border-radius: 6px; padding: 0.5rem; margin: 0.5rem 0; }
-.m2-fallback { color: #555; }
-.m2-hint { color: #8a5a00; }
-.m2-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
-.m2-image { max-width: 100%; }
-.m2-sandbox { width: 100%; border: 0; }
-blockquote { margin: 0.5rem 0; padding-left: 1rem; border-left: 3px solid #ccc; color: #444; }
-.m2-prose-image::before { content: '🖼 '; }
-pre { white-space: pre-wrap; background: #f6f6f6; padding: 0.5rem; }
+aside { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; max-height: 30vh; border-top: 1px solid #ccc; padding: 0 1rem; font-size: 0.9rem; }
+aside section { overflow: auto; }
+aside h2 { font-size: 1rem; display: flex; gap: 0.5rem; align-items: center; }
+aside ul { padding-left: 1rem; }
+aside li { margin: 0.2rem 0; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+button.link { font: inherit; background: none; border: 0; padding: 0; color: #00574b; cursor: pointer; text-align: left; }
+#diag-list button.link { color: #b00020; }
+#style-controls label { display: block; margin: 0.25rem 0; }
 dialog fieldset { border: 0; padding: 0; margin: 0 0 1rem; }
 dialog label { display: block; margin: 0.25rem 0; }
 dialog menu { display: flex; gap: 0.5rem; justify-content: flex-end; padding: 0; }
+#user-css-text { width: min(70ch, 80vw); height: 20em; font: 13px/1.5 ui-monospace, monospace; }
+
+@layer m2-ua {
+  #preview * { box-sizing: border-box; }
+  #preview > md2-document { min-height: 100%; }
+  md2-resource { border: 1px solid #ddd; border-radius: 6px; padding: 0.5rem; margin: 0.5rem 0; }
+  md2-fallback { color: #555; }
+  .m2-hint { color: #8a5a00; }
+  .m2-image { max-width: 100%; }
+  .m2-sandbox { width: 100%; border: 0; }
+  blockquote { margin: 0.5rem 0; padding-left: 1rem; border-left: 3px solid #ccc; color: #444; }
+  .m2-prose-image::before { content: '🖼 '; }
+  pre { white-space: pre-wrap; background: #f6f6f6; padding: 0.5rem; }
+}

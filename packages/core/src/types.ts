@@ -12,7 +12,13 @@ export type ErrorCode =
   | 'invalid-utf-8'
   | 'key-rejected';
 
-export type DiagnosticCode = ErrorCode | 'wrapper-unclosed';
+export type DiagnosticCode =
+  | ErrorCode
+  | 'wrapper-unclosed'
+  | 'stylesheet-not-css'
+  | 'stylesheet-bad-default'
+  | 'stylesheet-bad-media'
+  | 'stylesheet-missing-title';
 
 export interface Diagnostic {
   code: DiagnosticCode;

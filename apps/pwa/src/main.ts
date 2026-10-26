@@ -1,11 +1,18 @@
 import {
+  appliedSheets,
   applyBatchGrant,
   batchScope,
+  ByteQuota,
   collectResources,
+  composeCascade,
   defaultHandlers,
   GrantSet,
+  selectionFor,
+  type DecodeState,
   type Diagnostic,
   type ResolvedResource,
+  type StyleModel,
+  type StyleSelection,
 } from '@markdown2/core';
 import { createBrowserUriPolicy, createRegistry, type KeyGrant } from './decoders.js';
 import { downloadBytes, fromFile, fromHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
@@ -27,6 +34,9 @@ const fileInput = $<HTMLInputElement>('file-input');
 
 const DRAFT_KEY = 'm2.draft';
 const ORIGINS_KEY = 'm2.uri-origins';
+const STYLE_PREFS_KEY = 'm2.style-prefs';
+const USER_CSS_KEY = 'm2.user-css';
+const DOC_STYLES_KEY = 'm2.doc-styles';
 
 // ---------------------------------------------------------------- state
 const registry = createRegistry();
@@ -39,6 +49,14 @@ let controller: AbortController | null = null;
 let seq = 0;
 let fileName = 'untitled.md';
 let fileHandle: FileSystemFileHandle | undefined;
+
+// Styles (style.md §6). Constructable stylesheets are not subject to CSP style-src.
+const cascadeSheet = new CSSStyleSheet();
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, cascadeSheet];
+let docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
+let overrides = new Map<string, string | boolean>();
+const prefs = loadPrefs();
+let userCss = localStorage.getItem(USER_CSS_KEY) ?? '';
 
 function setStatus(s: string): void {
   statusEl.textContent = s;
@@ -53,6 +71,32 @@ function loadOrigins(): Set<string> {
   }
 }
 
+function loadPrefs(): { choices: Map<string, string>; toggles: Map<string, boolean> } {
+  const out = { choices: new Map<string, string>(), toggles: new Map<string, boolean>() };
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(STYLE_PREFS_KEY) ?? '{}');
+    if (typeof raw !== 'object' || raw === null) return out;
+    const r = raw as Record<string, unknown>;
+    if (Array.isArray(r.choices)) {
+      for (const e of r.choices as unknown[]) {
+        if (Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'string') out.choices.set(e[0], e[1]);
+      }
+    }
+    if (Array.isArray(r.toggles)) {
+      for (const e of r.toggles as unknown[]) {
+        if (Array.isArray(e) && typeof e[0] === 'string' && typeof e[1] === 'boolean') out.toggles.set(e[0], e[1]);
+      }
+    }
+  } catch {
+    // ignore corrupt preferences
+  }
+  return out;
+}
+
+function savePrefs(): void {
+  localStorage.setItem(STYLE_PREFS_KEY, JSON.stringify({ choices: [...prefs.choices], toggles: [...prefs.toggles] }));
+}
+
 // ---------------------------------------------------------------- pipeline
 async function refresh(): Promise<void> {
   controller?.abort();
@@ -64,7 +108,9 @@ async function refresh(): Promise<void> {
     if (mine !== seq) return; // a newer run superseded this one
     current = r;
     preview.innerHTML = r.html; // renderHtml escapes everything it emits
-    decorate(r);
+    applyStyles();
+    renderStylePanel(r.styles);
+    renderResourcePanel(r);
     showDiagnostics(r.diagnostics);
   } catch (e) {
     if (mine === seq) setStatus(`Render failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -80,7 +126,120 @@ function schedule(): void {
   }, 250);
 }
 
+// ---------------------------------------------------------------- styles
+function currentSelection(model: StyleModel): StyleSelection {
+  const sel = selectionFor(model, prefs);
+  for (const g of model.groups) {
+    const o = overrides.get(g.key);
+    if (o === undefined) continue;
+    const valid = g.kind === 'toggle' ? typeof o === 'boolean' : g.members.some((m) => m.id === o);
+    if (valid) sel.set(g.key, o);
+  }
+  return sel;
+}
+
+function applyStyles(): void {
+  const unstyled = $('unstyled');
+  unstyled.setAttribute('aria-pressed', String(!docStyles));
+  if (!current) return;
+  const author = docStyles ? appliedSheets(current.styles, currentSelection(current.styles)) : [];
+  const quota = new ByteQuota(Math.max(0, current.quota.limit - current.quota.used));
+  try {
+    cascadeSheet.replaceSync(composeCascade({ author, user: userCss.trim() === '' ? [] : [userCss], quota }));
+  } catch (e) {
+    setStatus(`Styles not applied: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+function checkboxRow(text: string, checked: boolean, onChange: (on: boolean) => void): HTMLLabelElement {
+  const label = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = checked;
+  box.addEventListener('change', () => {
+    onChange(box.checked);
+  });
+  label.append(box, ` ${text}`);
+  return label;
+}
+
+/** Style controls live in reader chrome, outside the styled surface (§8.3). */
+function renderStylePanel(model: StyleModel): void {
+  const panel = $('style-controls');
+  panel.replaceChildren();
+  const sel = currentSelection(model);
+  panel.append(
+    checkboxRow('Use document styles', docStyles, (on) => {
+      docStyles = on;
+      applyStyles();
+    }),
+    checkboxRow('Off by default for every document', localStorage.getItem(DOC_STYLES_KEY) === 'off', (on) => {
+      localStorage.setItem(DOC_STYLES_KEY, on ? 'off' : 'on');
+    }),
+  );
+  if (model.groups.length === 0) {
+    const p = document.createElement('p');
+    p.textContent = 'This document offers no style choices.';
+    panel.append(p);
+    return;
+  }
+  for (const g of model.groups) {
+    const prefix = g.scopeLabel === undefined ? '' : `${g.scopeLabel} › `;
+    if (g.kind === 'toggle') {
+      const unavailable = g.members[0]?.css === null ? ' (unavailable)' : '';
+      panel.append(
+        checkboxRow(`${prefix}${g.name}${unavailable}`, sel.get(g.key) === true, (on) => {
+          overrides.set(g.key, on);
+          prefs.toggles.set(g.name, on);
+          savePrefs();
+          applyStyles();
+        }),
+      );
+      continue;
+    }
+    const label = document.createElement('label');
+    label.textContent = `${prefix}${g.name} `;
+    const select = document.createElement('select');
+    for (const m of g.members) {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = `${m.title ?? `(untitled ${m.id})`}${m.css === null ? ' (unavailable)' : ''}`;
+      o.selected = sel.get(g.key) === m.id;
+      select.append(o);
+    }
+    select.addEventListener('change', () => {
+      overrides.set(g.key, select.value);
+      const m = g.members.find((x) => x.id === select.value);
+      if (m?.title !== undefined) prefs.choices.set(g.name, m.title);
+      savePrefs();
+      applyStyles();
+    });
+    label.append(select);
+    panel.append(label);
+  }
+}
+
+function editUserStyles(): void {
+  const dialog = $<HTMLDialogElement>('user-css');
+  const text = $<HTMLTextAreaElement>('user-css-text');
+  text.value = userCss;
+  dialog.returnValue = '';
+  dialog.addEventListener(
+    'close',
+    () => {
+      if (dialog.returnValue !== 'ok') return;
+      userCss = text.value;
+      localStorage.setItem(USER_CSS_KEY, userCss);
+      applyStyles();
+    },
+    { once: true },
+  );
+  dialog.showModal();
+}
+
 // ---------------------------------------------------------------- resource actions
+const ICON: Record<DecodeState, string> = { decoded: '✅', locked: '🔒', unsupported: '❔', failed: '⚠️' };
+
 function addButton(bar: HTMLElement, text: string, label: string, onClick: () => void): void {
   const b = document.createElement('button');
   b.type = 'button';
@@ -90,18 +249,30 @@ function addButton(bar: HTMLElement, text: string, label: string, onClick: () =>
   bar.append(b);
 }
 
-function decorate(r: PipelineResult): void {
-  for (const el of preview.querySelectorAll<HTMLElement>('.m2-resource[data-m2-id]')) {
-    const id = el.dataset.m2Shown ?? el.dataset.m2Id;
-    const entry = id === undefined ? undefined : r.resources.get(id);
-    if (!entry) continue;
+/**
+ * Decode states and grant controls are shown in reader chrome, never inside
+ * the styled preview, where document CSS could fake or hide them (§8.3).
+ */
+function renderResourcePanel(r: PipelineResult): void {
+  const list = $('res-list');
+  list.replaceChildren();
+  $('res-title').textContent = `Resources (${r.resources.size})`;
+  for (const entry of r.resources.values()) {
+    const li = document.createElement('li');
     const label = describeNode(entry.node);
-    const bar = document.createElement('div');
-    bar.className = 'm2-actions';
-    if (entry.result.state === 'locked') addButton(bar, 'Unlock…', `Unlock ${label}`, () => void unlock(entry));
-    if (entry.result.state === 'decoded') addButton(bar, 'Save', `Save ${label}`, () => save(entry, 'decoded'));
-    addButton(bar, 'Save raw', `Save raw payload of ${label}`, () => save(entry, 'raw'));
-    el.append(bar);
+    const { state, error } = entry.result;
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'link';
+    go.textContent = `${ICON[state]} ${label}: ${error === undefined ? state : `${state} (${error})`}`;
+    go.addEventListener('click', () => {
+      document.getElementById(`m2-${entry.node.id}`)?.scrollIntoView({ block: 'nearest' });
+    });
+    li.append(go);
+    if (state === 'locked') addButton(li, 'Unlock…', `Unlock ${label}`, () => void unlock(entry));
+    if (state === 'decoded') addButton(li, 'Save', `Save ${label}`, () => save(entry, 'decoded'));
+    addButton(li, 'Save raw', `Save raw payload of ${label}`, () => save(entry, 'raw'));
+    list.append(li);
   }
 }
 
@@ -220,6 +391,7 @@ function showDiagnostics(diags: readonly Diagnostic[]): void {
     if (d.nodeId === undefined || !d.nodeId.includes('/')) {
       const b = document.createElement('button');
       b.type = 'button';
+      b.className = 'link';
       b.textContent = text;
       b.addEventListener('click', () => {
         jumpToLine(d.line);
@@ -238,6 +410,8 @@ function load(doc: OpenedDocument): void {
   fileName = doc.name;
   fileHandle = doc.handle;
   grants = new GrantSet(); // keys never carry over to another document
+  overrides = new Map(); // per-document selections start from defaults and preferences
+  docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
   document.title = `${doc.name} · Markdown2`;
   localStorage.setItem(DRAFT_KEY, doc.text);
   setStatus('');
@@ -296,6 +470,13 @@ $('forget').addEventListener('click', () => {
   setStatus('Keys forgotten');
   void refresh();
 });
+// One command to reach an unstyled view (style.md §6.2).
+$('unstyled').addEventListener('click', () => {
+  docStyles = !docStyles;
+  applyStyles();
+  if (current) renderStylePanel(current.styles);
+});
+$('user-styles').addEventListener('click', editUserStyles);
 
 document.addEventListener('dragover', (e) => {
   e.preventDefault();

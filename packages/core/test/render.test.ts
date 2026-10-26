@@ -53,7 +53,7 @@ describe('rendering (§6)', () => {
     const out = await render('<<<S type="text/plain"\nSECRET\n');
     expect(out).not.toContain('SECRET');
     expect(out).toContain('unterminated-resource');
-    expect(out).toContain('m2-fallback');
+    expect(out).toContain('md2-fallback');
   });
 
   it('locked resources show a stub with their title', async () => {
@@ -88,7 +88,7 @@ describe('rendering (§6)', () => {
 
   it('nested markdown renders recursively', async () => {
     const out = await render('<<<A type="text/markdown"\ninner\n<<<B type="text/plain"\ndeep\nB\nA\n');
-    expect(out).toContain('<div class="m2-document"><p>inner</p>');
+    expect(out).toContain('<md2-document><p>inner</p>');
     expect(out).toContain('data-m2-id="0/1"');
     expect(out).toContain('deep');
   });
@@ -139,7 +139,7 @@ describe('rel semantics (Appendix A)', () => {
     const fallbackFirst = await render(
       '<<<A type="a/b"\nx\nA\n<<<B type="text/plain" rel="alternate"\nALTPAYLOAD\nB\n',
     );
-    expect(fallbackFirst.match(/class="m2-resource"/g)).toHaveLength(1);
+    expect(fallbackFirst.match(/<md2-resource /g)).toHaveLength(1);
     expect(fallbackFirst).toContain('ALTPAYLOAD');
     expect(fallbackFirst).toContain('data-m2-shown="1"');
     const both = await render(
@@ -188,7 +188,7 @@ describe('fence aliases (§7.2, F.3)', () => {
 describe('prototype keys never act as table entries', () => {
   it('renders types and fences named after Object.prototype members', async () => {
     const out = await render('<<<X type="constructor"\nx\nX\n\n```constructor\ny\n```\n');
-    expect(out).toContain('m2-fallback');
+    expect(out).toContain('md2-fallback');
     expect(out).not.toContain('Did you mean');
     expect(out).toContain('<code class="language-constructor">y</code>');
   });

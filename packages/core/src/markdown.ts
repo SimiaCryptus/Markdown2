@@ -177,7 +177,7 @@ function parseList(
       continue;
     }
     const it = HR.test(l) ? null : itemStart(l);
-    if (it && it.ordered === first.ordered && it.bullet === first.bullet) {
+    if (it?.ordered === first.ordered && it.bullet === first.bullet) {
       if (blank) loose = true;
       items.push(cur);
       cur = [it.content];
@@ -721,46 +721,57 @@ const defaultFence = (info: string, body: string): Promise<string> => {
   return Promise.resolve(`<pre><code${cls}>${escapeHtml(body)}</code></pre>`);
 };
 
-async function renderBlocks(
-  blocks: readonly Block[],
-  fence: (info: string, body: string) => Promise<string>,
-  tight: boolean,
-): Promise<string> {
-  const out: string[] = [];
-  for (const b of blocks) {
-    switch (b.t) {
-      case 'p': {
-        const html = renderInline(b.text, 0, true);
-        out.push(tight ? html : `<p>${html}</p>`);
-        break;
-      }
-      case 'h':
-        out.push(`<h${b.level}>${renderInline(b.text, 0, true)}</h${b.level}>`);
-        break;
-      case 'hr':
-        out.push('<hr>');
-        break;
-      case 'code':
-        out.push(b.fenced ? await fence(b.info, b.body) : `<pre><code>${escapeHtml(b.body)}</code></pre>`);
-        break;
-      case 'quote':
-        out.push(`<blockquote>\n${await renderBlocks(b.children, fence, false)}\n</blockquote>`);
-        break;
-      case 'list': {
-        const tag = b.ordered ? 'ol' : 'ul';
-        const startAttr = b.ordered && b.start !== 1 ? ` start="${b.start}"` : '';
-        const items: string[] = [];
-        for (const it of b.items) items.push(`<li>${await renderBlocks(it, fence, b.tight)}</li>`);
-        out.push(`<${tag}${startAttr}>\n${items.join('\n')}\n</${tag}>`);
-        break;
-      }
+type FenceFn = (info: string, body: string) => Promise<string>;
+
+async function renderBlock(b: Block, fence: FenceFn, tight: boolean): Promise<string> {
+  switch (b.t) {
+    case 'p': {
+      const html = renderInline(b.text, 0, true);
+      return tight ? html : `<p>${html}</p>`;
+    }
+    case 'h':
+      return `<h${b.level}>${renderInline(b.text, 0, true)}</h${b.level}>`;
+    case 'hr':
+      return '<hr>';
+    case 'code':
+      return b.fenced ? await fence(b.info, b.body) : `<pre><code>${escapeHtml(b.body)}</code></pre>`;
+    case 'quote':
+      return `<blockquote>\n${await renderBlocks(b.children, fence, false)}\n</blockquote>`;
+    case 'list': {
+      const tag = b.ordered ? 'ol' : 'ul';
+      const startAttr = b.ordered && b.start !== 1 ? ` start="${b.start}"` : '';
+      const items: string[] = [];
+      for (const it of b.items) items.push(`<li>${await renderBlocks(it, fence, b.tight)}</li>`);
+      return `<${tag}${startAttr}>\n${items.join('\n')}\n</${tag}>`;
     }
   }
+}
+
+async function renderBlocks(blocks: readonly Block[], fence: FenceFn, tight: boolean): Promise<string> {
+  const out: string[] = [];
+  for (const b of blocks) out.push(await renderBlock(b, fence, tight));
   return out.join('\n');
+}
+
+/** One top-level block. `heading` is set for headings, so sections can be derived (style.md §4.2). */
+export interface RenderedBlock {
+  html: string;
+  heading?: number;
+}
+
+/** Render Markdown prose into its top-level blocks. Everything is escaped. */
+export async function renderMarkdownBlocks(text: string, opts: MarkdownOptions = {}): Promise<RenderedBlock[]> {
+  const lines = text.split(/\r?\n/).map(expandTabs);
+  const fence = opts.fence ?? defaultFence;
+  const out: RenderedBlock[] = [];
+  for (const b of parseBlocks(lines, 0)) {
+    const html = await renderBlock(b, fence, false);
+    out.push(b.t === 'h' ? { html, heading: b.level } : { html });
+  }
+  return out;
 }
 
 /** Render Markdown prose to an HTML fragment. Everything is escaped. */
 export async function renderMarkdown(text: string, opts: MarkdownOptions = {}): Promise<string> {
-  const lines = text.split(/\r?\n/).map(expandTabs);
-  return renderBlocks(parseBlocks(lines, 0), opts.fence ?? defaultFence, false);
+  return (await renderMarkdownBlocks(text, opts)).map((b) => b.html).join('\n');
 }

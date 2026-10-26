@@ -67,3 +67,18 @@ Seeded from plan.md §11; additions below.
      exposes no resolved IP. The PWA relies on locked-by-default `uri`, a user-configured
      `https:` origin allowlist, per-resource grants, `credentials: 'omit'` and CSP `connect-src`.
      Consider stating in §5.5 that the address rules bind server-side renderers only.
+23. **M2SS: metadata stubs** (style.md Appendix A): the UA rule hides every `rel="metadata"`
+     resource, including failed or locked metadata whose stub #19 keeps visible. The implementation
+     follows Appendix A; consider `md2-resource[rel="metadata"][state="decoded"]`.
+24. **M2SS: author `@scope`**: an author `@scope` nested inside the reader's scope wrapper is
+     believed to be constrained to the outer scope, but this is not stated in style.md. The
+     sanitiser drops author `@scope` rules, together with `@import`, `@namespace` and `@charset`.
+25. **M2SS: `stylesheet` and associations**: stylesheets are invisible, so they neither break nor
+     become the target of an `alternate`/`describedby` association. `stylesheet` is treated as a
+     known `rel` token, as proposed in style.md §2.
+26. **M2SS: `:root`**: in a page, `:root` matches `html`, not the top-level `md2-document`. The
+     sanitiser rewrites `:root` to `:scope` in top-level stylesheets only; inside a nested
+     document `:root` matches nothing.
+27. **M2SS: global names**: `@font-face`, `@keyframes`, `@property` and `@counter-style` names are
+     global in a page, so a document can redefine a family used by reader chrome. The PWA uses only
+     generic families in its chrome. Consider listing this in style.md §8.2.

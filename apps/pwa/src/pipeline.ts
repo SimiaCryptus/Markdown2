@@ -1,5 +1,8 @@
 import {
+  ByteQuota,
   collectResources,
+  collectStyles,
+  DEFAULT_LIMITS,
   parse,
   renderHtml,
   resolveDocument,
@@ -11,6 +14,7 @@ import {
   type ResolvedNode,
   type ResolvedResource,
   type ResourceNode,
+  type StyleModel,
   type UriPolicy,
 } from '@markdown2/core';
 
@@ -28,23 +32,31 @@ export interface PipelineResult {
   html: string;
   /** Every resource in the tree, by node id. */
   resources: Map<string, ResolvedResource>;
+  /** Document stylesheets and their groups (style.md §5). */
+  styles: StyleModel;
+  /** Decoded-size quota after resolution; stylesheet `data:` URLs draw on what is left. */
+  quota: ByteQuota;
 }
 
 /** Parse, decode and render. DOM-free, so it can move into a worker later. */
 export async function runPipeline(src: string, o: PipelineOptions): Promise<PipelineResult> {
   const doc = parse(src);
   const diagnostics: Diagnostic[] = [...doc.diagnostics];
+  const quota = new ByteQuota(DEFAULT_LIMITS.maxDecodedBytes);
   const resolved = await resolveDocument(doc, {
     registry: o.registry,
     grants: o.grants,
     diagnostics,
+    quota,
     handledTypes: o.handlers.types('view'),
     ...(o.uriPolicy ? { uriPolicy: o.uriPolicy } : {}),
     ...(o.signal ? { signal: o.signal } : {}),
   });
   const html = await renderHtml(resolved, { handlers: o.handlers });
   const resources = new Map(collectResources(resolved).map((e) => [e.node.id, e] as const));
-  return { resolved, diagnostics, html, resources };
+  const styles = collectStyles(resolved);
+  diagnostics.push(...styles.diagnostics);
+  return { resolved, diagnostics, html, resources, styles, quota };
 }
 
 export interface Gate {

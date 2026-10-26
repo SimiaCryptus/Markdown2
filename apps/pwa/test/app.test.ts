@@ -1,4 +1,4 @@
-import { GrantSet, defaultHandlers, parse, type ResourceNode } from '@markdown2/core';
+import { GrantSet, appliedSheets, composeCascade, defaultHandlers, parse, type ResourceNode } from '@markdown2/core';
 import { Encrypter } from 'age-encryption';
 import { describe, expect, it, vi } from 'vitest';
 import { createBrowserUriPolicy, createRegistry, type FetchLike } from '../src/decoders.js';
@@ -112,5 +112,15 @@ describe('save plan (§6.2, H.4)', () => {
     if (!entry) throw new Error('missing resource');
     expect(planSave(entry, 'decoded')).toBeNull();
     expect(planSave(entry, 'raw')?.bytes.length).toBeGreaterThan(0);
+  });
+});
+describe('document stylesheets (style.md)', () => {
+  it('are collected, offered as a toggle and scoped to the document', async () => {
+    const src = '<<<S type="text/css" rel="stylesheet" md2-group="Theme" title="Dark"\n:root{color:#ddd}\nS\n# Hi\n';
+    const r = await runPipeline(src, { registry: createRegistry(), grants: new GrantSet(), handlers });
+    expect(r.styles.groups[0]).toMatchObject({ name: 'Theme', kind: 'toggle' });
+    expect(r.html).not.toContain('#ddd');
+    const css = composeCascade({ author: appliedSheets(r.styles, new Map()) });
+    expect(css).toContain('@scope (md2-document[data-m2-root]) {\n:scope{color:#ddd}\n}');
   });
 });

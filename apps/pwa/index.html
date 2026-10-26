@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' https: ws:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: ws:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="theme-color" content="#00695c" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -20,6 +20,7 @@
       <button id="save-doc" type="button">Save</button>
       <button id="policy" type="button">Remote resources…</button>
       <button id="forget" type="button">Forget keys</button>
+      <button id="unstyled" type="button" aria-pressed="false">Unstyled view</button>
       <span id="status" role="status"></span>
       <button id="update" type="button" hidden>Update available. Reload</button>
     </header>
@@ -27,9 +28,19 @@
       <textarea id="editor" spellcheck="false" aria-label="Markdown2 source"></textarea>
       <section id="preview" aria-label="Preview"></section>
     </main>
-    <aside aria-labelledby="diag-title">
-      <h2 id="diag-title">Diagnostics</h2>
-      <ul id="diag-list"></ul>
+    <aside>
+      <section aria-labelledby="diag-title">
+        <h2 id="diag-title">Diagnostics</h2>
+        <ul id="diag-list"></ul>
+      </section>
+      <section aria-labelledby="res-title">
+        <h2 id="res-title">Resources</h2>
+        <ul id="res-list"></ul>
+      </section>
+      <section aria-labelledby="style-title">
+        <h2><span id="style-title">Styles</span> <button id="user-styles" type="button">My styles…</button></h2>
+        <div id="style-controls"></div>
+      </section>
     </aside>
 
     <dialog id="unlock" aria-labelledby="unlock-title">
@@ -45,6 +56,18 @@
         <menu>
           <button value="cancel" formnovalidate>Cancel</button>
           <button value="ok">Unlock</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="user-css" aria-labelledby="user-css-title">
+      <form method="dialog">
+        <h2 id="user-css-title">My styles</h2>
+        <p>Applied to every document, in the user origin. <code>:root</code> means the document.</p>
+        <textarea id="user-css-text" spellcheck="false" aria-label="User stylesheet"></textarea>
+        <menu>
+          <button value="cancel">Cancel</button>
+          <button value="ok">Save</button>
         </menu>
       </form>
     </dialog>

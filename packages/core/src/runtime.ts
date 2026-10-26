@@ -55,6 +55,8 @@ export interface ResolveOptions {
   signal?: AbortSignal;
   /** Sink for diagnostics raised while resolving (nested parses, rejected keys, decode errors). */
   diagnostics?: Diagnostic[];
+  /** Decoded-size quota. Pass one to share it with later consumers such as stylesheet `data:` URLs. */
+  quota?: ByteQuota;
 }
 /**
  * Handler lookup (spec-issues #10): compare the lower-cased essence for
@@ -87,7 +89,7 @@ export async function resolveDocument(doc: Document, opts: ResolveOptions = {}):
   const ctx = {
     registry: opts.registry ?? new DecoderRegistry(),
     grants: opts.grants ?? new GrantSet(),
-    quota: new ByteQuota(limits.maxDecodedBytes),
+    quota: opts.quota ?? new ByteQuota(limits.maxDecodedBytes),
     counter: { resources: doc.children.filter((c) => c.kind === 'resource').length },
   };
   const handled = opts.handledTypes ?? new Set(['text/markdown']);
