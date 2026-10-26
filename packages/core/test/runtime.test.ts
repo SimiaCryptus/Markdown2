@@ -13,6 +13,7 @@ import {
   type Decoder,
   type Diagnostic,
   type ResourceNode,
+  type UriPolicy,
 } from '../src/index.js';
 import { asResource } from './helpers.js';
 
@@ -76,6 +77,19 @@ describe('handler lookup', () => {
     const res = asResource(r);
     expect(res.children).toBeDefined();
     expect(res.fallback).toBeUndefined();
+  });
+});
+describe('uri resolution (C.10)', () => {
+  it('retrieved bytes never change the declared type', async () => {
+    const html = new TextEncoder().encode('<script>alert(1)</script>');
+    const uriPolicy: UriPolicy = { allows: () => true, resolve: () => Promise.resolve(html) };
+    const [r] = await resolveDocument(parse('<<<U type="image/png" encoding="uri"\nhttps://example.org/x\nU\n'), {
+      uriPolicy,
+      handledTypes: new Set(['image/png']),
+    });
+    const res = asResource(r);
+    expect(res.result.state).toBe('decoded');
+    expect(res.node.resource.type).toBe('image/png');
   });
 });
 

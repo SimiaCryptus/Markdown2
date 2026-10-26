@@ -1,0 +1,24 @@
+[
+  {
+    "kind": "resource",
+    "id": "0",
+    "rel": "inline",
+    "type": "text/markdown",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "type": "text/markdown"
+    },
+    "token": "S",
+    "syntax": "block",
+    "payload": "```js\nx\n```",
+    "state": "decoded",
+    "children": [
+      {
+        "kind": "prose",
+        "text": "```js\nx\n```"
+      }
+    ]
+  }
+]

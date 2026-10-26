@@ -1,0 +1,35 @@
+[
+  {
+    "kind": "resource",
+    "id": "0",
+    "rel": "inline",
+    "type": "text/plain",
+    "encoding": [
+      "frob"
+    ],
+    "attributes": {
+      "encoding": "frob",
+      "type": "text/plain"
+    },
+    "token": "A",
+    "syntax": "block",
+    "payload": "x",
+    "state": "unsupported"
+  },
+  {
+    "kind": "resource",
+    "id": "1",
+    "rel": "inline",
+    "type": "text/plain",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "type": "text/plain"
+    },
+    "token": "B",
+    "syntax": "block",
+    "payload": "ok",
+    "state": "decoded"
+  }
+]

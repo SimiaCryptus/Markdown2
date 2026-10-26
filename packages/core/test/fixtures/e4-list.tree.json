@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "prose",
+    "text": "1. Step\n\n"
+  },
+  {
+    "kind": "resource",
+    "id": "1",
+    "rel": "inline",
+    "type": "text/plain",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "type": "text/plain"
+    },
+    "token": "N",
+    "syntax": "block",
+    "payload": "abc",
+    "state": "decoded"
+  },
+  {
+    "kind": "prose",
+    "text": "2. Next\n"
+  }
+]

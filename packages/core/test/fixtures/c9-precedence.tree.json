@@ -1,0 +1,39 @@
+[
+  {
+    "kind": "resource",
+    "id": "0",
+    "rel": "inline",
+    "type": "a/b",
+    "encoding": [
+      "frobnicate",
+      "uri"
+    ],
+    "attributes": {
+      "encoding": "frobnicate uri",
+      "type": "a/b"
+    },
+    "token": "A",
+    "syntax": "block",
+    "payload": "x",
+    "error": "uri-not-first",
+    "state": "failed"
+  },
+  {
+    "kind": "resource",
+    "id": "1",
+    "rel": "inline",
+    "type": "a/b",
+    "encoding": [
+      "base64",
+      "frobnicate"
+    ],
+    "attributes": {
+      "encoding": "base64 frobnicate",
+      "type": "a/b"
+    },
+    "token": "B",
+    "syntax": "block",
+    "payload": "x",
+    "state": "unsupported"
+  }
+]

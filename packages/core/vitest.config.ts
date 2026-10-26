@@ -12,7 +12,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**', 'src/**/*.d.ts'],
+      // src/bin is a thin process wrapper around the tested `main()`.
+      exclude: ['src/**/*.{test,spec}.ts', 'src/**/__tests__/**', 'src/**/*.d.ts', 'src/bin/**'],
       reporter: ['text', 'html', 'lcov', 'json-summary'],
       reportsDirectory: 'coverage',
       // Still produce coverage reports when tests fail (fail-at-end).

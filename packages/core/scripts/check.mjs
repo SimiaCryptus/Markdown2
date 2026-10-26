@@ -35,7 +35,8 @@ const ALL_STEPS = [
   { name: 'lint', cmd: 'eslint . --max-warnings=0', fix: 'npm run lint:fix' },
   { name: 'typecheck', cmd: 'tsc -p tsconfig.json --noEmit --pretty' },
   { name: 'test', cmd: 'vitest run --coverage' },
-  { name: 'build', cmd: 'tsc -p tsconfig.build.json' },
+  // Core first with no Node types (stays runtime-neutral), then the Node entry points.
+  { name: 'build', cmd: 'tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json' },
 ];
 
 const list = (/** @type {string | undefined} */ s) =>

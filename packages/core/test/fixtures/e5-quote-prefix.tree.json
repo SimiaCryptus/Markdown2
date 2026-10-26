@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "resource",
+    "id": "0",
+    "rel": "inline",
+    "type": "text/plain",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "type": "text/plain"
+    },
+    "token": "Q",
+    "syntax": "block",
+    "payload": "",
+    "error": "unterminated-resource",
+    "state": "failed"
+  },
+  {
+    "kind": "prose",
+    "text": "abc\nQ\n"
+  }
+]

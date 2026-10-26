@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "resource",
+    "id": "0",
+    "rel": "metadata",
+    "type": "application/yaml",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "rel": "metadata",
+      "type": "application/yaml"
+    },
+    "token": null,
+    "syntax": "frontmatter",
+    "payload": "title: x",
+    "state": "decoded"
+  },
+  {
+    "kind": "prose",
+    "text": "Body\n"
+  }
+]

@@ -162,38 +162,6 @@ export const lockedUriPolicy = (): UriPolicy => ({
   resolve: () => Promise.reject(new DecodeError('uri resolution disabled')),
 });
 
-/**
- * SSRF guard for server-side renderers (§5.5). Call on the resolved address
- * of the initial request and of every redirect.
- */
-export function isForbiddenAddress(ip: string): boolean {
-  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip);
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])];
-    return (
-      a === 127 ||
-      a === 10 ||
-      a === 0 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127)
-    );
-  }
-  const v6 = ip.toLowerCase();
-  if (v6.startsWith('::ffff:')) return isForbiddenAddress(v6.slice(7));
-  return (
-    v6 === '::1' ||
-    v6 === '::' ||
-    v6.startsWith('fe8') ||
-    v6.startsWith('fe9') ||
-    v6.startsWith('fea') ||
-    v6.startsWith('feb') ||
-    v6.startsWith('fc') ||
-    v6.startsWith('fd')
-  );
-}
-
 export class DecoderRegistry {
   private readonly map = new Map<string, Decoder>();
   constructor(decoders: Decoder[] = [utf8Decoder, base64Decoder, gzipDecoder, uriDecoder]) {

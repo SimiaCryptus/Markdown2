@@ -1,0 +1,23 @@
+[
+  {
+    "kind": "prose",
+    "text": "before\n"
+  },
+  {
+    "kind": "resource",
+    "id": "1",
+    "rel": "inline",
+    "type": "a/b",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "type": "a/b"
+    },
+    "token": "S",
+    "syntax": "block",
+    "payload": "secret",
+    "error": "unterminated-resource",
+    "state": "failed"
+  }
+]

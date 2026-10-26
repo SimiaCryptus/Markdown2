@@ -1,0 +1,21 @@
+[
+  {
+    "kind": "resource",
+    "id": "0",
+    "rel": "inline",
+    "type": null,
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {},
+    "token": "S",
+    "syntax": "block",
+    "payload": "# not a heading",
+    "error": "missing-type",
+    "state": "failed"
+  },
+  {
+    "kind": "prose",
+    "text": "after\n"
+  }
+]

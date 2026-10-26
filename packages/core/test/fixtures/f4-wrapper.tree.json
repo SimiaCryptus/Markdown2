@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "prose",
+    "text": "Topology below.\n\n"
+  },
+  {
+    "kind": "resource",
+    "id": "1",
+    "rel": "inline",
+    "type": "text/plain",
+    "encoding": [
+      "utf-8"
+    ],
+    "attributes": {
+      "type": "text/plain"
+    },
+    "token": "T",
+    "syntax": "wrapped",
+    "payload": "hello",
+    "state": "decoded"
+  },
+  {
+    "kind": "prose",
+    "text": "after\n"
+  }
+]

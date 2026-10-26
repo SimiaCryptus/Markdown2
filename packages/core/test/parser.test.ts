@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parse, type ResourceNode } from '../src/index.js';
+import { normaliseDocument, parse, type ResourceNode } from '../src/index.js';
 
 const td = new TextDecoder();
 const res = (src: string) => parse(src).children.filter((c): c is ResourceNode => c.kind === 'resource');
@@ -85,11 +85,41 @@ describe('E. placement', () => {
     expect(res('```\n<<<S type="a/b"\n```\n')).toHaveLength(0);
   });
 });
+describe('H. limits', () => {
+  it('excess resources fail, the rest of the document continues', () => {
+    const doc = parse('<<<A type="a/b"\nA\n<<<B type="a/b"\nB\n<<<C type="a/b"\nC\ntail\n', {
+      limits: { maxResources: 2 },
+    });
+    const nodes = doc.children.filter((c): c is ResourceNode => c.kind === 'resource');
+    expect(nodes.map((n) => n.structuralError)).toEqual([undefined, undefined, 'limit-exceeded']);
+    expect(doc.children.at(-1)).toMatchObject({ kind: 'prose', text: 'tail\n' });
+  });
+});
 
 describe('wrapper', () => {
   it('consumes comment lines', () => {
     const doc = parse('<!--\n<<<T type="a/b"\nx\nT\n-->\nafter\n');
     expect((doc.children[0] as ResourceNode).syntax).toBe('wrapped');
     expect(doc.children[1]).toMatchObject({ kind: 'prose', text: 'after\n' });
+  });
+  it('F.4: wrapped and unwrapped trees are identical apart from syntax', () => {
+    const strip = (src: string) =>
+      normaliseDocument(parse(src)).map((n) => (n.kind === 'resource' ? { ...n, syntax: undefined } : n));
+    expect(strip('<!--\n<<<T type="a/b"\nx\nT\n-->\nafter\n')).toEqual(strip('<<<T type="a/b"\nx\nT\nafter\n'));
+  });
+  it('missing --> emits a diagnostic', () => {
+    const doc = parse('<!--\n<<<T type="a/b"\nx\nT\nafter\n');
+    expect(doc.diagnostics.map((d) => d.code)).toEqual(['wrapper-unclosed']);
+  });
+});
+describe('normalised tree', () => {
+  it('reports non-UTF-8 payloads as base64', () => {
+    const doc = parse('<<<B type="a/b"\n\uFFFF\nB\n');
+    const node = doc.children[0] as ResourceNode;
+    // Replace the payload with invalid UTF-8 to exercise the binary path.
+    const binary = { ...node, resource: { ...node.resource, payload: new Uint8Array([0xff, 0xfe]) } };
+    const [n] = normaliseDocument({ children: [binary], diagnostics: [] });
+    expect(n).toMatchObject({ kind: 'resource', payloadBase64: '//4=' });
+    expect(n).not.toHaveProperty('payload');
   });
 });
