@@ -1,6 +1,13 @@
 # @markdown2/pwa: barebones M4
 
 `npm install && npm run dev`, then open the printed URL. `npm run build && npm run preview` serves the production build with the service worker.
+## Design: Ink & Vellum
+- The preview is a sheet of paper on a desk: serif type, a gold drop cap, ❦ section breaks and specimen-style resource cards. Locked resources are drawn sealed (dashed gold, hatched). All of it lives in the `m2-ua` layer, so document styles still win.
+- Layouts: Write / Split / Read (`Mod+1/2/3`). Inspector with Diagnostics, Resources and Styles tabs (`Mod+.`); a drawer on narrow screens.
+- Line-number gutter with diagnostic markers. Hover a marker for the message; click it to jump.
+- Status bar: save state (local draft, unsaved or saved), cursor, word count and a diagnostics summary.
+- Light, dark or automatic theme. Drop overlay. Print shows only the page. `?` opens the shortcut sheet.
+
 
 ## What is implemented
 

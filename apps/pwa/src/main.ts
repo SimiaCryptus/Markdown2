@@ -26,17 +26,38 @@ const $ = <T extends HTMLElement>(id: string): T => {
   return el as T;
 };
 
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (className) e.className = className;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
 const editor = $<HTMLTextAreaElement>('editor');
 const preview = $('preview');
 const statusEl = $('status');
 const diagList = $('diag-list');
 const fileInput = $<HTMLInputElement>('file-input');
+const gutterLines = $('gutter-lines');
+const cursorEl = $('cursor');
+const wordsEl = $('words');
+const saveStateEl = $('save-state');
+const docNameEl = $('doc-name');
+const diagSummary = $<HTMLButtonElement>('diag-summary');
+const dropEl = $('drop');
 
 const DRAFT_KEY = 'm2.draft';
 const ORIGINS_KEY = 'm2.uri-origins';
 const STYLE_PREFS_KEY = 'm2.style-prefs';
 const USER_CSS_KEY = 'm2.user-css';
 const DOC_STYLES_KEY = 'm2.doc-styles';
+const VIEW_KEY = 'm2.view';
+const INSPECTOR_KEY = 'm2.inspector';
+const THEME_KEY = 'm2.theme';
+
+const MOD = /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? '⌘' : 'Ctrl';
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const narrow = window.matchMedia('(max-width: 900px)');
 
 // ---------------------------------------------------------------- state
 const registry = createRegistry();
@@ -49,6 +70,8 @@ let controller: AbortController | null = null;
 let seq = 0;
 let fileName = 'untitled.md';
 let fileHandle: FileSystemFileHandle | undefined;
+/** Text as last opened from or saved to a file; null for a local draft. */
+let savedText: string | null = null;
 
 // Styles (style.md §6). Constructable stylesheets are not subject to CSP style-src.
 const cascadeSheet = new CSSStyleSheet();
@@ -58,8 +81,19 @@ let overrides = new Map<string, string | boolean>();
 const prefs = loadPrefs();
 let userCss = localStorage.getItem(USER_CSS_KEY) ?? '';
 
-function setStatus(s: string): void {
+let statusTimer: ReturnType<typeof setTimeout> | undefined;
+function setStatus(s: string, sticky = false): void {
+  clearTimeout(statusTimer);
   statusEl.textContent = s;
+  statusEl.classList.remove('flash');
+  if (s === '') return;
+  void statusEl.offsetWidth; // restart the animation
+  statusEl.classList.add('flash');
+  if (!sticky) {
+    statusTimer = setTimeout(() => {
+      statusEl.textContent = '';
+    }, 6000);
+  }
 }
 
 function loadOrigins(): Set<string> {
@@ -97,6 +131,123 @@ function savePrefs(): void {
   localStorage.setItem(STYLE_PREFS_KEY, JSON.stringify({ choices: [...prefs.choices], toggles: [...prefs.toggles] }));
 }
 
+// ---------------------------------------------------------------- workspace: theme, layout, inspector
+type Theme = 'auto' | 'light' | 'dark';
+const storedTheme = localStorage.getItem(THEME_KEY);
+let theme: Theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'auto';
+
+function applyTheme(): void {
+  if (theme === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = theme;
+  const name = theme.charAt(0).toUpperCase() + theme.slice(1);
+  $('theme-label').textContent = name;
+  $('theme').title = `Theme: ${name} (click to change)`;
+}
+
+type View = 'write' | 'split' | 'read';
+const isView = (v: unknown): v is View => v === 'write' || v === 'split' || v === 'read';
+
+function setView(v: View): void {
+  document.body.dataset.view = v;
+  localStorage.setItem(VIEW_KEY, v);
+  for (const b of document.querySelectorAll<HTMLButtonElement>('[data-set-view]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.setView === v));
+  }
+  if (v === 'write' || v === 'split') editor.focus({ preventScroll: true });
+}
+
+function setInspector(open: boolean, remember = true): void {
+  document.body.dataset.inspector = open ? 'open' : 'closed';
+  $('inspector-toggle').setAttribute('aria-pressed', String(open));
+  if (remember) localStorage.setItem(INSPECTOR_KEY, open ? 'open' : 'closed');
+}
+
+type Tab = 'diag' | 'res' | 'style';
+const TABS: Tab[] = ['diag', 'res', 'style'];
+
+function selectTab(t: Tab, focus = false): void {
+  for (const x of TABS) {
+    const tab = $(`tab-${x}`);
+    const on = x === t;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    $(`panel-${x}`).hidden = !on;
+    if (on && focus) tab.focus();
+  }
+}
+
+function openInspectorAt(t: Tab): void {
+  setInspector(true);
+  selectTab(t, true);
+}
+
+// ---------------------------------------------------------------- editor: gutter, cursor, counts
+let gutterCount = 0;
+let currentLine = 0;
+let diagLines = new Map<number, string[]>();
+
+function renderGutter(force = false): void {
+  const n = editor.value.split('\n').length;
+  if (!force && n === gutterCount) return;
+  gutterCount = n;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) {
+    const d = el('div', 'gl', String(i + 1));
+    const msgs = diagLines.get(i);
+    if (msgs) {
+      d.classList.add('diag');
+      d.title = msgs.join('\n');
+      d.dataset.line = String(i);
+    }
+    if (i === currentLine) d.classList.add('current');
+    frag.append(d);
+  }
+  gutterLines.replaceChildren(frag);
+}
+
+function syncGutter(): void {
+  gutterLines.style.transform = `translateY(${-editor.scrollTop}px)`;
+}
+
+function updateCursor(): void {
+  const pos = editor.selectionStart;
+  const before = editor.value.slice(0, pos);
+  const line = before.split('\n').length - 1;
+  const col = pos - (before.lastIndexOf('\n') + 1);
+  const selected = editor.selectionEnd - editor.selectionStart;
+  cursorEl.textContent = `Ln ${line + 1}, Col ${col + 1}${selected > 0 ? ` · ${selected} selected` : ''}`;
+  if (line !== currentLine) {
+    gutterLines.children[currentLine]?.classList.remove('current');
+    currentLine = line;
+    gutterLines.children[line]?.classList.add('current');
+  }
+}
+
+function updateCounts(): void {
+  const t = editor.value.trim();
+  const words = t === '' ? 0 : t.split(/\s+/).length;
+  wordsEl.textContent = `${words.toLocaleString()} word${words === 1 ? '' : 's'} · ${editor.value.length.toLocaleString()} chars`;
+}
+
+function updateSaveState(): void {
+  if (savedText === null) {
+    saveStateEl.dataset.state = 'draft';
+    saveStateEl.textContent = 'Local draft · autosaved';
+  } else if (savedText === editor.value) {
+    saveStateEl.dataset.state = 'saved';
+    saveStateEl.textContent = 'Saved';
+  } else {
+    saveStateEl.dataset.state = 'dirty';
+    saveStateEl.textContent = 'Unsaved changes · draft autosaved';
+  }
+}
+
+function setDocName(name: string): void {
+  fileName = name;
+  docNameEl.textContent = name;
+  document.title = `${name} · Markdown2`;
+}
+
 // ---------------------------------------------------------------- pipeline
 async function refresh(): Promise<void> {
   controller?.abort();
@@ -113,7 +264,7 @@ async function refresh(): Promise<void> {
     renderResourcePanel(r);
     showDiagnostics(r.diagnostics);
   } catch (e) {
-    if (mine === seq) setStatus(`Render failed: ${e instanceof Error ? e.message : String(e)}`);
+    if (mine === seq) setStatus(`Render failed: ${e instanceof Error ? e.message : String(e)}`, true);
   }
 }
 
@@ -122,6 +273,7 @@ function schedule(): void {
   clearTimeout(timer);
   timer = setTimeout(() => {
     localStorage.setItem(DRAFT_KEY, editor.value);
+    updateCounts();
     void refresh();
   }, 250);
 }
@@ -139,27 +291,36 @@ function currentSelection(model: StyleModel): StyleSelection {
 }
 
 function applyStyles(): void {
-  const unstyled = $('unstyled');
-  unstyled.setAttribute('aria-pressed', String(!docStyles));
+  $('unstyled').setAttribute('aria-pressed', String(!docStyles));
+  const tag = $('style-state');
+  tag.textContent = docStyles ? 'Document styles' : 'Unstyled';
+  tag.dataset.off = String(!docStyles);
   if (!current) return;
   const author = docStyles ? appliedSheets(current.styles, currentSelection(current.styles)) : [];
   const quota = new ByteQuota(Math.max(0, current.quota.limit - current.quota.used));
   try {
     cascadeSheet.replaceSync(composeCascade({ author, user: userCss.trim() === '' ? [] : [userCss], quota }));
   } catch (e) {
-    setStatus(`Styles not applied: ${e instanceof Error ? e.message : String(e)}`);
+    setStatus(`Styles not applied: ${e instanceof Error ? e.message : String(e)}`, true);
   }
 }
 
+function toggleUnstyled(): void {
+  docStyles = !docStyles;
+  applyStyles();
+  if (current) renderStylePanel(current.styles);
+  setStatus(docStyles ? 'Document styles on' : 'Unstyled view');
+}
+
 function checkboxRow(text: string, checked: boolean, onChange: (on: boolean) => void): HTMLLabelElement {
-  const label = document.createElement('label');
-  const box = document.createElement('input');
+  const label = el('label', 'opt');
+  const box = el('input');
   box.type = 'checkbox';
   box.checked = checked;
   box.addEventListener('change', () => {
     onChange(box.checked);
   });
-  label.append(box, ` ${text}`);
+  label.append(box, el('span', undefined, text));
   return label;
 }
 
@@ -169,6 +330,7 @@ function renderStylePanel(model: StyleModel): void {
   panel.replaceChildren();
   const sel = currentSelection(model);
   panel.append(
+    el('h3', 'panel-sub', 'Reader'),
     checkboxRow('Use document styles', docStyles, (on) => {
       docStyles = on;
       applyStyles();
@@ -176,11 +338,10 @@ function renderStylePanel(model: StyleModel): void {
     checkboxRow('Off by default for every document', localStorage.getItem(DOC_STYLES_KEY) === 'off', (on) => {
       localStorage.setItem(DOC_STYLES_KEY, on ? 'off' : 'on');
     }),
+    el('h3', 'panel-sub', 'This document'),
   );
   if (model.groups.length === 0) {
-    const p = document.createElement('p');
-    p.textContent = 'This document offers no style choices.';
-    panel.append(p);
+    panel.append(el('p', 'panel-note', 'This document offers no style choices.'));
     return;
   }
   for (const g of model.groups) {
@@ -197,13 +358,12 @@ function renderStylePanel(model: StyleModel): void {
       );
       continue;
     }
-    const label = document.createElement('label');
-    label.textContent = `${prefix}${g.name} `;
-    const select = document.createElement('select');
+    const label = el('label', 'opt');
+    label.append(el('span', undefined, `${prefix}${g.name}`));
+    const select = el('select');
     for (const m of g.members) {
-      const o = document.createElement('option');
+      const o = el('option', undefined, `${m.title ?? `(untitled ${m.id})`}${m.css === null ? ' (unavailable)' : ''}`);
       o.value = m.id;
-      o.textContent = `${m.title ?? `(untitled ${m.id})`}${m.css === null ? ' (unavailable)' : ''}`;
       o.selected = sel.get(g.key) === m.id;
       select.append(o);
     }
@@ -231,6 +391,7 @@ function editUserStyles(): void {
       userCss = text.value;
       localStorage.setItem(USER_CSS_KEY, userCss);
       applyStyles();
+      setStatus('Your styles were saved');
     },
     { once: true },
   );
@@ -238,15 +399,46 @@ function editUserStyles(): void {
 }
 
 // ---------------------------------------------------------------- resource actions
-const ICON: Record<DecodeState, string> = { decoded: '✅', locked: '🔒', unsupported: '❔', failed: '⚠️' };
+const STATE_LABEL: Record<DecodeState, string> = {
+  decoded: 'Decoded',
+  locked: 'Locked',
+  unsupported: 'Unsupported',
+  failed: 'Failed',
+};
 
-function addButton(bar: HTMLElement, text: string, label: string, onClick: () => void): void {
-  const b = document.createElement('button');
+function addButton(bar: HTMLElement, text: string, label: string, onClick: () => void, primary = false): void {
+  const b = el('button', primary ? 'btn primary' : 'btn', text);
   b.type = 'button';
-  b.textContent = text;
   b.setAttribute('aria-label', label);
   b.addEventListener('click', onClick);
   bar.append(b);
+}
+
+function emptyState(text: string, code?: string): HTMLLIElement {
+  const li = el('li', 'empty', text);
+  if (code !== undefined) {
+    li.append(el('br'), el('code', undefined, code));
+  }
+  return li;
+}
+
+/** Scroll the preview to a resource and let it glow briefly. */
+function revealInPreview(id: string): void {
+  if (document.body.dataset.view === 'write') setView('split');
+  if (narrow.matches) setInspector(false, false);
+  const target = document.getElementById(`m2-${id}`);
+  if (!target) return;
+  target.scrollIntoView({ block: 'center', behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+  if (!reduceMotion.matches) {
+    target.animate(
+      [
+        { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
+        { boxShadow: '0 0 0 6px rgba(200, 151, 63, 0.45)' },
+        { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
+      ],
+      { duration: 1400, easing: 'ease-out' },
+    );
+  }
 }
 
 /**
@@ -256,22 +448,44 @@ function addButton(bar: HTMLElement, text: string, label: string, onClick: () =>
 function renderResourcePanel(r: PipelineResult): void {
   const list = $('res-list');
   list.replaceChildren();
-  $('res-title').textContent = `Resources (${r.resources.size})`;
+  const count = $('res-count');
+  count.textContent = String(r.resources.size);
+  const locked = [...r.resources.values()].some((e) => e.result.state === 'locked');
+  if (locked) count.dataset.tone = 'bad';
+  else delete count.dataset.tone;
+  if (r.resources.size === 0) {
+    list.append(emptyState('No resources yet. Embed one with', '<<<NAME type="text/plain"'));
+    return;
+  }
   for (const entry of r.resources.values()) {
-    const li = document.createElement('li');
+    const li = el('li', 'res');
     const label = describeNode(entry.node);
     const { state, error } = entry.result;
-    const go = document.createElement('button');
+    li.dataset.state = state;
+
+    const go = el('button', 'res-name');
     go.type = 'button';
-    go.className = 'link';
-    go.textContent = `${ICON[state]} ${label}: ${error === undefined ? state : `${state} (${error})`}`;
+    go.title = 'Show in the page';
+    const seal = el('span', 'seal');
+    seal.setAttribute('aria-hidden', 'true');
+    go.append(seal, el('span', undefined, label));
+    go.setAttribute('aria-label', `${label}: ${state}${error === undefined ? '' : ` (${error})`}. Show in the page.`);
     go.addEventListener('click', () => {
-      document.getElementById(`m2-${entry.node.id}`)?.scrollIntoView({ block: 'nearest' });
+      revealInPreview(entry.node.id);
     });
-    li.append(go);
-    if (state === 'locked') addButton(li, 'Unlock…', `Unlock ${label}`, () => void unlock(entry));
-    if (state === 'decoded') addButton(li, 'Save', `Save ${label}`, () => save(entry, 'decoded'));
-    addButton(li, 'Save raw', `Save raw payload of ${label}`, () => save(entry, 'raw'));
+
+    const meta = el('div', 'res-meta');
+    meta.append(el('span', 'chip', STATE_LABEL[state]));
+    if (error !== undefined) meta.append(el('span', 'chip err', error));
+    const enc = entry.node.resource.encoding.join(' ');
+    meta.append(el('span', undefined, `${entry.node.resource.type ?? '(no type)'}${enc === 'utf-8' ? '' : ` · ${enc}`}`));
+
+    const actions = el('div', 'res-actions');
+    if (state === 'locked') addButton(actions, 'Unlock…', `Unlock ${label}`, () => void unlock(entry), true);
+    if (state === 'decoded') addButton(actions, 'Save', `Save ${label}`, () => save(entry, 'decoded'));
+    addButton(actions, 'Save raw', `Save raw payload of ${label}`, () => save(entry, 'raw'));
+
+    li.append(go, meta, actions);
     list.append(li);
   }
 }
@@ -289,6 +503,7 @@ function save(entry: ResolvedResource, form: 'raw' | 'decoded'): void {
     name = plan.requested;
   }
   downloadBytes(plan.bytes, name);
+  setStatus(`Downloaded ${name}`);
 }
 
 function askKey(description: string): Promise<KeyGrant | null> {
@@ -343,7 +558,7 @@ async function unlock(entry: ResolvedResource): Promise<void> {
   grants.grant(node, gate.stage, key);
   await refresh();
   if (current?.resources.get(node.id)?.result.error === 'key-rejected') {
-    setStatus(`Key rejected for ${label}`);
+    setStatus(`Key rejected for ${label}`, true);
     return;
   }
   setStatus('');
@@ -371,59 +586,103 @@ async function offerBatch(exceptId: string, decoderId: string, key: KeyGrant): P
 
 // ---------------------------------------------------------------- diagnostics
 function jumpToLine(line: number): void {
+  if (document.body.dataset.view === 'read') setView('split');
   const lines = editor.value.split('\n');
   let start = 0;
   for (let k = 0; k < line && k < lines.length; k++) start += (lines[k]?.length ?? 0) + 1;
   editor.focus();
   editor.setSelectionRange(start, start + (lines[line]?.length ?? 0));
-  const lh = Number.parseFloat(getComputedStyle(editor).lineHeight) || 20;
+  const lh = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22;
   editor.scrollTop = Math.max(0, line * lh - editor.clientHeight / 3);
+  syncGutter();
+  updateCursor();
 }
 
 function showDiagnostics(diags: readonly Diagnostic[]): void {
   diagList.replaceChildren();
-  $('diag-title').textContent = `Diagnostics (${diags.length})`;
+  diagLines = new Map();
+  const n = diags.length;
+  const count = $('diag-count');
+  count.textContent = String(n);
+  count.dataset.tone = n > 0 ? 'bad' : 'ok';
+  diagSummary.textContent = n === 0 ? '✓ Well-formed' : `${n} diagnostic${n === 1 ? '' : 's'}`;
+  diagSummary.dataset.tone = n > 0 ? 'bad' : 'ok';
+  if (n === 0) diagList.append(emptyState('No diagnostics. The document is well-formed.'));
+
   for (const d of diags) {
-    const li = document.createElement('li');
-    const where = d.nodeId === undefined ? '' : ` [${d.nodeId}]`;
-    const text = `${d.line + 1}: ${d.code}${where}: ${d.message}`;
     // Lines of nested documents are relative to their own payload: no jump.
-    if (d.nodeId === undefined || !d.nodeId.includes('/')) {
-      const b = document.createElement('button');
+    const jumpable = d.nodeId === undefined || !d.nodeId.includes('/');
+    const li = el('li');
+    const line = el('span', 'diag-line', jumpable ? `L${d.line + 1}` : `↳${d.line + 1}`);
+    const code = el('span', 'diag-code', d.nodeId === undefined ? d.code : `${d.code} · ${d.nodeId}`);
+    const msg = el('span', 'diag-msg', d.message);
+    if (jumpable) {
+      const arr = diagLines.get(d.line) ?? [];
+      arr.push(`${d.code}: ${d.message}`);
+      diagLines.set(d.line, arr);
+      const b = el('button', 'diag');
       b.type = 'button';
-      b.className = 'link';
-      b.textContent = text;
+      b.setAttribute('aria-label', `Line ${d.line + 1}: ${d.code}. ${d.message}. Jump to line.`);
       b.addEventListener('click', () => {
         jumpToLine(d.line);
       });
+      b.append(line, code, msg);
       li.append(b);
     } else {
-      li.textContent = text;
+      const div = el('div', 'diag static');
+      div.title = 'Line numbers inside nested documents are relative to their own payload.';
+      div.append(line, code, msg);
+      li.append(div);
     }
     diagList.append(li);
   }
+  renderGutter(true);
 }
 
 // ---------------------------------------------------------------- documents
-function load(doc: OpenedDocument): void {
+function load(doc: OpenedDocument, fromFileSystem = true): void {
   editor.value = doc.text;
-  fileName = doc.name;
+  setDocName(doc.name);
   fileHandle = doc.handle;
+  savedText = fromFileSystem ? doc.text : null;
   grants = new GrantSet(); // keys never carry over to another document
   overrides = new Map(); // per-document selections start from defaults and preferences
   docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
-  document.title = `${doc.name} · Markdown2`;
   localStorage.setItem(DRAFT_KEY, doc.text);
-  setStatus('');
+  editor.scrollTop = 0;
+  editor.setSelectionRange(0, 0);
+  syncGutter();
+  renderGutter(true);
+  updateCursor();
+  updateCounts();
+  updateSaveState();
+  setStatus(`Opened ${doc.name}`);
   void refresh();
 }
 
+function openDoc(): void {
+  void openDocument(fileInput).then((d) => {
+    if (d) load(d);
+  });
+}
+
 async function saveDoc(): Promise<void> {
+  const text = editor.value;
   try {
-    fileHandle = (await saveDocument(editor.value, fileName, fileHandle)) ?? fileHandle;
-    setStatus('Saved');
+    const outcome = await saveDocument(text, fileName, fileHandle);
+    if (outcome.kind === 'cancelled') {
+      setStatus('Save cancelled');
+      return;
+    }
+    if (outcome.kind === 'file') {
+      fileHandle = outcome.handle;
+      setDocName(outcome.handle.name);
+    }
+    savedText = text;
+    updateSaveState();
+    setStatus(outcome.kind === 'file' ? `Saved ${fileName}` : `Downloaded ${fileName}`);
   } catch (e) {
-    setStatus(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+    setStatus(`Save failed: ${e instanceof Error ? e.message : String(e)}`, true);
   }
 }
 
@@ -447,22 +706,30 @@ function editPolicy(): void {
   if (bad.length > 0) alert(`Ignored: ${bad.join(', ')}`);
   origins = next;
   localStorage.setItem(ORIGINS_KEY, JSON.stringify([...next]));
+  setStatus(next.size === 0 ? 'Every remote resource stays locked' : `${next.size} origin(s) allowed`);
   void refresh();
 }
 
+function openHelp(): void {
+  const dialog = $<HTMLDialogElement>('help');
+  if (!dialog.open) dialog.showModal();
+}
+
 // ---------------------------------------------------------------- wiring
-editor.addEventListener('input', schedule);
-editor.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault();
-    void saveDoc();
-  }
+editor.addEventListener('input', () => {
+  renderGutter();
+  updateCursor();
+  updateSaveState();
+  schedule();
 });
-$('open').addEventListener('click', () => {
-  void openDocument(fileInput).then((d) => {
-    if (d) load(d);
-  });
+for (const type of ['keyup', 'click', 'select', 'focus'] as const) editor.addEventListener(type, updateCursor);
+editor.addEventListener('scroll', syncGutter, { passive: true });
+gutterLines.addEventListener('click', (e) => {
+  const t = (e.target as HTMLElement).closest<HTMLElement>('.gl.diag');
+  if (t?.dataset.line !== undefined) jumpToLine(Number(t.dataset.line));
 });
+
+$('open').addEventListener('click', openDoc);
 $('save-doc').addEventListener('click', () => void saveDoc());
 $('policy').addEventListener('click', editPolicy);
 $('forget').addEventListener('click', () => {
@@ -471,35 +738,144 @@ $('forget').addEventListener('click', () => {
   void refresh();
 });
 // One command to reach an unstyled view (style.md §6.2).
-$('unstyled').addEventListener('click', () => {
-  docStyles = !docStyles;
-  applyStyles();
-  if (current) renderStylePanel(current.styles);
-});
+$('unstyled').addEventListener('click', toggleUnstyled);
 $('user-styles').addEventListener('click', editUserStyles);
+$('inspector-toggle').addEventListener('click', () => {
+  setInspector(document.body.dataset.inspector !== 'open');
+});
+$('theme').addEventListener('click', () => {
+  theme = theme === 'auto' ? 'light' : theme === 'light' ? 'dark' : 'auto';
+  localStorage.setItem(THEME_KEY, theme);
+  applyTheme();
+});
+$('help-btn').addEventListener('click', openHelp);
+diagSummary.addEventListener('click', () => {
+  openInspectorAt('diag');
+});
+for (const b of document.querySelectorAll<HTMLButtonElement>('[data-set-view]')) {
+  b.addEventListener('click', () => {
+    if (isView(b.dataset.setView)) setView(b.dataset.setView);
+  });
+}
+for (const x of TABS) {
+  $(`tab-${x}`).addEventListener('click', () => {
+    selectTab(x);
+  });
+}
+$('inspector')
+  .querySelector('[role="tablist"]')
+  ?.addEventListener('keydown', (e) => {
+    const ke = e as KeyboardEvent;
+    const at = TABS.findIndex((x) => $(`tab-${x}`).getAttribute('aria-selected') === 'true');
+    let next = at;
+    if (ke.key === 'ArrowRight') next = (at + 1) % TABS.length;
+    else if (ke.key === 'ArrowLeft') next = (at - 1 + TABS.length) % TABS.length;
+    else if (ke.key === 'Home') next = 0;
+    else if (ke.key === 'End') next = TABS.length - 1;
+    else return;
+    ke.preventDefault();
+    const t = TABS[next];
+    if (t) selectTab(t, true);
+  });
 
+const isTyping = (t: EventTarget | null): boolean =>
+  t instanceof HTMLInputElement ||
+  t instanceof HTMLTextAreaElement ||
+  t instanceof HTMLSelectElement ||
+  (t instanceof HTMLElement && t.isContentEditable);
+
+document.addEventListener('keydown', (e) => {
+  if (document.querySelector('dialog[open]')) return;
+  const mod = e.ctrlKey || e.metaKey;
+  const key = e.key.toLowerCase();
+  if (mod && e.shiftKey && !e.altKey && key === 'u') {
+    e.preventDefault();
+    toggleUnstyled();
+    return;
+  }
+  if (mod && !e.shiftKey && !e.altKey) {
+    const views: Record<string, View> = { '1': 'write', '2': 'split', '3': 'read' };
+    const v = Object.hasOwn(views, key) ? views[key] : undefined;
+    if (v) {
+      e.preventDefault();
+      setView(v);
+      return;
+    }
+    if (key === 's') {
+      e.preventDefault();
+      void saveDoc();
+    } else if (key === 'o') {
+      e.preventDefault();
+      openDoc();
+    } else if (key === '.') {
+      e.preventDefault();
+      setInspector(document.body.dataset.inspector !== 'open');
+    }
+    return;
+  }
+  if (e.key === '?' && !isTyping(e.target)) {
+    e.preventDefault();
+    openHelp();
+  }
+});
+
+// Drag and drop, with an overlay that says what will happen.
+let dragDepth = 0;
+const hasFiles = (e: DragEvent): boolean => e.dataTransfer?.types.includes('Files') ?? false;
+document.addEventListener('dragenter', (e) => {
+  if (!hasFiles(e)) return;
+  dragDepth++;
+  dropEl.hidden = false;
+});
+document.addEventListener('dragleave', (e) => {
+  if (!hasFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) dropEl.hidden = true;
+});
 document.addEventListener('dragover', (e) => {
   e.preventDefault();
 });
 document.addEventListener('drop', (e) => {
   e.preventDefault();
+  dragDepth = 0;
+  dropEl.hidden = true;
   const f = e.dataTransfer?.files[0];
-  if (f) void fromFile(f).then(load);
+  if (f) void fromFile(f).then((d) => load(d));
 });
 
 window.launchQueue?.setConsumer((params) => {
   const h = params.files[0];
-  if (h?.kind === 'file') void fromHandle(h as FileSystemFileHandle).then(load);
+  if (h?.kind === 'file') void fromHandle(h as FileSystemFileHandle).then((d) => load(d));
 });
+
+// ---------------------------------------------------------------- start
+for (const b of document.querySelectorAll<HTMLElement>('[data-tip]')) {
+  const sc = b.dataset.shortcut;
+  const tip = b.dataset.tip ?? '';
+  b.title = sc === undefined ? tip : `${tip} (${sc.replace('Mod', MOD)})`;
+}
+for (const k of document.querySelectorAll('.kbd-mod')) k.textContent = MOD;
+
+applyTheme();
+const storedView = localStorage.getItem(VIEW_KEY);
+setView(isView(storedView) ? storedView : 'split');
+const storedInspector = localStorage.getItem(INSPECTOR_KEY);
+setInspector(storedInspector === null ? !narrow.matches : storedInspector === 'open', false);
+selectTab('diag');
 
 // Share target (GET) and initial content.
 const params = new URLSearchParams(location.search);
 const shared = params.get('text');
 if (shared !== null) {
   history.replaceState(null, '', location.pathname);
-  load({ name: `${params.get('title') ?? 'shared'}.md`, text: shared });
+  load({ name: `${params.get('title') ?? 'shared'}.md`, text: shared }, false);
 } else {
   editor.value = localStorage.getItem(DRAFT_KEY) ?? SAMPLE;
+  setDocName(fileName);
+  renderGutter(true);
+  updateCursor();
+  updateCounts();
+  updateSaveState();
   void refresh();
 }
 

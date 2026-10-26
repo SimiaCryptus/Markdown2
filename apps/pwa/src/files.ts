@@ -42,18 +42,23 @@ export async function openDocument(input: HTMLInputElement): Promise<OpenedDocum
   });
 }
 
-/** Save the document source. Returns the handle that was written, if any. */
+export type SaveOutcome =
+   | { kind: 'file'; handle: FileSystemFileHandle }
+   | { kind: 'download' }
+   | { kind: 'cancelled' };
+
+/** Save the document source. Reports where it went, or that the user cancelled. */
 export async function saveDocument(
   text: string,
   name: string,
   handle?: FileSystemFileHandle,
-): Promise<FileSystemFileHandle | undefined> {
+): Promise<SaveOutcome> {
   let h = handle;
   if (!h && window.showSaveFilePicker) {
     try {
       h = await window.showSaveFilePicker({ suggestedName: name, types: TYPES });
     } catch (e) {
-      if (isAbort(e)) return undefined;
+       if (isAbort(e)) return { kind: 'cancelled' };
       throw e;
     }
   }
@@ -61,10 +66,10 @@ export async function saveDocument(
     const w = await h.createWritable();
     await w.write(text);
     await w.close();
-    return h;
+     return { kind: 'file', handle: h };
   }
   downloadBytes(new TextEncoder().encode(text), name);
-  return undefined;
+   return { kind: 'download' };
 }
 
 /**

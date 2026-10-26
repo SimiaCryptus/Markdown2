@@ -7,68 +7,198 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: ws:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
-    <meta name="theme-color" content="#00695c" />
+    <meta name="theme-color" content="#1c1a24" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/src/styles.css" />
     <title>Markdown2</title>
   </head>
-  <body>
-    <header>
-      <h1>Markdown2</h1>
-      <button id="open" type="button">Open…</button>
-      <button id="save-doc" type="button">Save</button>
-      <button id="policy" type="button">Remote resources…</button>
-      <button id="forget" type="button">Forget keys</button>
-      <button id="unstyled" type="button" aria-pressed="false">Unstyled view</button>
-      <span id="status" role="status"></span>
-      <button id="update" type="button" hidden>Update available. Reload</button>
-    </header>
-    <main>
-      <textarea id="editor" spellcheck="false" aria-label="Markdown2 source"></textarea>
-      <section id="preview" aria-label="Preview"></section>
-    </main>
-    <aside>
-      <section aria-labelledby="diag-title">
-        <h2 id="diag-title">Diagnostics</h2>
-        <ul id="diag-list"></ul>
-      </section>
-      <section aria-labelledby="res-title">
-        <h2 id="res-title">Resources</h2>
-        <ul id="res-list"></ul>
-      </section>
-      <section aria-labelledby="style-title">
-        <h2><span id="style-title">Styles</span> <button id="user-styles" type="button">My styles…</button></h2>
-        <div id="style-controls"></div>
-      </section>
-    </aside>
+  <body data-view="split" data-inspector="open">
+    <header class="bar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+          <rect class="bm-bg" width="64" height="64" rx="14" />
+          <rect class="bm-rim" x="3.5" y="3.5" width="57" height="57" rx="11" />
+          <text class="bm-m" x="29" y="44" text-anchor="middle">M</text>
+          <text class="bm-2" x="48" y="30" text-anchor="middle">2</text>
+        </svg>
+        <div class="brand-text">
+          <span class="brand-name">Markdown<em>2</em></span>
+          <span id="doc-name" class="doc-name">untitled.md</span>
+        </div>
+      </div>
 
-    <dialog id="unlock" aria-labelledby="unlock-title">
+      <nav class="tools" aria-label="Commands">
+        <div class="group" role="group" aria-label="Document">
+          <button id="open" class="tool" type="button" data-tip="Open a document" data-shortcut="Mod+O">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
+            <span class="label">Open</span>
+          </button>
+          <button id="save-doc" class="tool" type="button" data-tip="Save the document" data-shortcut="Mod+S">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M7 3v5h8V3M7 21v-7h10v7" /></svg>
+            <span class="label">Save</span>
+          </button>
+        </div>
+
+        <div class="group segmented" role="group" aria-label="Layout">
+          <button class="tool" type="button" data-set-view="write" aria-pressed="false" data-tip="Write: source only" data-shortcut="Mod+1">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg>
+            <span class="label">Write</span>
+          </button>
+          <button class="tool" type="button" data-set-view="split" aria-pressed="true" data-tip="Split: source and page" data-shortcut="Mod+2">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></svg>
+            <span class="label">Split</span>
+          </button>
+          <button class="tool" type="button" data-set-view="read" aria-pressed="false" data-tip="Read: page only" data-shortcut="Mod+3">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C5.5 4 9 4 12 6c3-2 6.5-2 9-.5V19c-2.5-1.5-6-1.5-9 .5-3-2-6.5-2-9-.5z" /><path d="M12 6v13.5" /></svg>
+            <span class="label">Read</span>
+          </button>
+        </div>
+
+        <div class="group" role="group" aria-label="Trust and style">
+          <button id="policy" class="tool" type="button" data-tip="Origins allowed to serve remote resources">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>
+            <span class="label">Remote…</span>
+          </button>
+          <button id="forget" class="tool" type="button" data-tip="Forget every key and grant">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="M11 12l9-9M17 6l3 3M15 8l2 2" /></svg>
+            <span class="label">Forget keys</span>
+          </button>
+          <button id="unstyled" class="tool" type="button" aria-pressed="false" data-tip="Unstyled view" data-shortcut="Mod+Shift+U">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19 9.5 5 15 19M6.2 14h6.6" /><path d="M3 3l18 18" /></svg>
+            <span class="label">Unstyled</span>
+          </button>
+        </div>
+
+        <div class="group" role="group" aria-label="Workspace">
+          <button id="inspector-toggle" class="tool" type="button" aria-pressed="true" aria-controls="inspector" data-tip="Show or hide the inspector" data-shortcut="Mod+.">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M15 4v16M17.5 8h1M17.5 11h1" /></svg>
+            <span class="label">Inspector</span>
+          </button>
+          <button id="theme" class="tool" type="button" data-tip="Theme">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path class="fill" d="M12 4a8 8 0 0 0 0 16z" /></svg>
+            <span id="theme-label" class="label">Auto</span>
+          </button>
+          <button id="help-btn" class="tool" type="button" data-tip="Keyboard shortcuts" data-shortcut="?">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01" /></svg>
+            <span class="label">Keys</span>
+          </button>
+        </div>
+      </nav>
+
+      <button id="update" type="button" class="tool update" hidden>Update ready · Reload</button>
+    </header>
+
+    <main id="workspace">
+      <div class="pane pane-editor">
+        <div class="pane-head">
+          <span class="pane-title">Manuscript</span>
+          <span class="pane-tag">Markdown2 source</span>
+        </div>
+        <div class="editor-wrap">
+          <div id="gutter" class="gutter" aria-hidden="true"><div id="gutter-lines"></div></div>
+          <textarea id="editor" wrap="off" spellcheck="false" autocapitalize="off" aria-label="Markdown2 source"></textarea>
+        </div>
+      </div>
+
+      <div class="pane pane-preview">
+        <div class="pane-head">
+          <span class="pane-title">Page</span>
+          <span id="style-state" class="pane-tag">Document styles</span>
+        </div>
+        <section id="preview" aria-label="Preview"></section>
+      </div>
+
+      <aside id="inspector" class="inspector" aria-label="Inspector">
+        <div class="tabs" role="tablist" aria-label="Inspector sections">
+          <button id="tab-diag" class="tab" type="button" role="tab" aria-controls="panel-diag" aria-selected="true">
+            Diagnostics <span id="diag-count" class="count">0</span>
+          </button>
+          <button id="tab-res" class="tab" type="button" role="tab" aria-controls="panel-res" aria-selected="false" tabindex="-1">
+            Resources <span id="res-count" class="count">0</span>
+          </button>
+          <button id="tab-style" class="tab" type="button" role="tab" aria-controls="panel-style" aria-selected="false" tabindex="-1">
+            Styles
+          </button>
+        </div>
+        <section id="panel-diag" class="panel" role="tabpanel" aria-labelledby="tab-diag">
+          <ul id="diag-list" class="list"></ul>
+        </section>
+        <section id="panel-res" class="panel" role="tabpanel" aria-labelledby="tab-res" hidden>
+          <ul id="res-list" class="list"></ul>
+        </section>
+        <section id="panel-style" class="panel" role="tabpanel" aria-labelledby="tab-style" hidden>
+          <div id="style-controls"></div>
+          <div class="panel-foot">
+            <button id="user-styles" class="btn" type="button">My styles…</button>
+            <span class="panel-hint">Your own CSS, applied to every document.</span>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="statusbar">
+      <span id="save-state" class="save-state" data-state="draft">Local draft · autosaved</span>
+      <span id="cursor" class="stat">Ln 1, Col 1</span>
+      <span id="words" class="stat">0 words</span>
+      <button id="diag-summary" class="stat-btn" type="button">Checking…</button>
+      <span id="status" role="status" aria-live="polite"></span>
+    </footer>
+
+    <div id="drop" class="drop" hidden>
+      <div class="drop-card">
+        <span class="drop-orn" aria-hidden="true">❦</span>
+        <strong>Drop to open</strong>
+        <span>A Markdown2 file, read locally. Nothing is uploaded.</span>
+      </div>
+    </div>
+
+    <dialog id="unlock" class="dlg" aria-labelledby="unlock-title">
       <form method="dialog">
+        <span class="dlg-orn" aria-hidden="true">🔒</span>
         <h2 id="unlock-title">Unlock resource</h2>
-        <p id="unlock-desc"></p>
-        <fieldset>
+        <p id="unlock-desc" class="dlg-sub"></p>
+        <fieldset class="choice">
           <legend>Key type</legend>
-          <label><input type="radio" name="kind" value="passphrase" checked /> Passphrase</label>
-          <label><input type="radio" name="kind" value="identity" /> age identity (AGE-SECRET-KEY-1…)</label>
+          <label class="choice-card"><input type="radio" name="kind" value="passphrase" checked /><span><b>Passphrase</b><small>A shared secret phrase</small></span></label>
+          <label class="choice-card"><input type="radio" name="kind" value="identity" /><span><b>age identity</b><small>AGE-SECRET-KEY-1…</small></span></label>
         </fieldset>
-        <label>Key <input type="password" name="key" autocomplete="off" required /></label>
+        <label class="field">Key <input type="password" name="key" autocomplete="off" required /></label>
+        <p class="dlg-note">Keys stay in memory for this tab only and never touch storage.</p>
         <menu>
-          <button value="cancel" formnovalidate>Cancel</button>
-          <button value="ok">Unlock</button>
+          <button class="btn" value="cancel" formnovalidate>Cancel</button>
+          <button class="btn primary" value="ok">Unlock</button>
         </menu>
       </form>
     </dialog>
 
-    <dialog id="user-css" aria-labelledby="user-css-title">
+    <dialog id="user-css" class="dlg dlg-wide" aria-labelledby="user-css-title">
       <form method="dialog">
         <h2 id="user-css-title">My styles</h2>
-        <p>Applied to every document, in the user origin. <code>:root</code> means the document.</p>
+        <p class="dlg-sub">Applied to every document, in the user origin. <code>:root</code> means the document.</p>
         <textarea id="user-css-text" spellcheck="false" aria-label="User stylesheet"></textarea>
         <menu>
-          <button value="cancel">Cancel</button>
-          <button value="ok">Save</button>
+          <button class="btn" value="cancel">Cancel</button>
+          <button class="btn primary" value="ok">Save</button>
         </menu>
+      </form>
+    </dialog>
+
+    <dialog id="help" class="dlg" aria-labelledby="help-title">
+      <form method="dialog">
+        <span class="dlg-orn" aria-hidden="true">❦</span>
+        <h2 id="help-title">Keyboard</h2>
+        <p class="dlg-sub">Everything is a keystroke away.</p>
+        <dl class="keys">
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">O</kbd></dt><dd>Open a document</dd>
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">S</kbd></dt><dd>Save</dd>
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">1</kbd> <kbd class="kbd">2</kbd> <kbd class="kbd">3</kbd></dt><dd>Write · Split · Read</dd>
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">.</kbd></dt><dd>Show or hide the inspector</dd>
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">⇧</kbd><kbd class="kbd">U</kbd></dt><dd>Unstyled view</dd>
+          <dt><kbd class="kbd">?</kbd></dt><dd>This sheet</dd>
+        </dl>
+        <p class="dlg-note">Drop a <code>.md</code> file anywhere to open it. Nothing unlocks or fetches on its own: every key and every remote resource waits for you.</p>
+        <menu><button class="btn primary" value="ok">Close</button></menu>
       </form>
     </dialog>
 
