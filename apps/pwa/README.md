@@ -49,6 +49,9 @@
     inside the original `pre > code.language-x`. Code resources (`text/javascript`, …) too.
   - `text/vnd.mermaid` and ```` ```mermaid ````: Mermaid (strict) in a sandboxed frame (`/sandbox/mermaid.html`).
   - `application/x-tex`, ```` ```math ```` and `application/mathml+xml`: MathJax to SVG, shown through `<img>`.
+   - `model/x3d+xml`, `model/x3d-vrml`, `model/vrml` and ```` ```x3d ````: X3D scenes drawn by X_ITE in a sandboxed
+     frame (`/sandbox/x3d.html`). X_ITE is copied to `public/vendor/x_ite` on install (`scripts/vendor-x_ite.mjs`)
+     and served from this origin; the frame fetches nothing from the web.
   - Frames have an opaque origin and show the escaped source until they report that they have drawn.
     Their scripts are CORS requests, so production needs the CloudFront CORS policy in `terraform/`.
 - **Web pages and charts** (`public/docs/embeds.md`)

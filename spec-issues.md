@@ -110,3 +110,9 @@ Seeded from plan.md §11; additions below.
 34. **Grids and the styling tree**: the PWA wraps enhanced tables in `div.m2-grid-scroll` with a toolbar
       before it, so `md2-section > table` no longer matches them. style.md §4.1 could reserve such a
       wrapper, or say that reader enhancements may wrap tables.
+35. **X3D scenes and their references**: `model/x3d+xml`, `model/x3d-vrml` and `model/vrml` are drawn
+       by X_ITE in an opaque-origin frame. X3D scenes can name external files (`ImageTexture`, `Inline`,
+       `Script` urls). Fetching them would bypass the `uri` gate (§5.5), so the frame's CSP blocks the
+       web; only `data:` URLs and the app's own files load. X3D `Script` nodes may run inside the frame,
+       which has no access to the app. Consider stating that handlers must not resolve references named
+       inside a payload, and whether such references should resolve against the document's address.

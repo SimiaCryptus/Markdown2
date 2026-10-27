@@ -153,6 +153,7 @@ export const FENCE_ALIASES: Readonly<Record<string, string>> = {
   math: 'application/x-tex',
   csv: 'text/csv',
   tsv: 'text/tab-separated-values',
+  x3d: 'model/x3d+xml',
 };
 
 export function fenceAliasType(info: string): string | undefined {

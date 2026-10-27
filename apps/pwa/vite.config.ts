@@ -32,6 +32,7 @@ export default defineConfig({
         code: here('./sandbox/code.html'),
         mermaid: here('./sandbox/mermaid.html'),
         gchart: here('./sandbox/gchart.html'),
+         x3d: here('./sandbox/x3d.html'),
       },
     },
   },

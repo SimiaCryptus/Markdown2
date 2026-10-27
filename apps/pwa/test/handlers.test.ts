@@ -10,6 +10,7 @@ import {
   monacoLanguage,
   pageTarget,
   remoteNeed,
+   x3dHandler,
 } from '../src/handlers.js';
 import { runPipeline } from '../src/pipeline.js';
 
@@ -72,13 +73,31 @@ describe('MathJax', () => {
 });
 
 describe('developer docs page', () => {
-  it('demonstrates code, diagrams and maths', async () => {
+   it('demonstrates code, diagrams, maths and 3D scenes', async () => {
     const src = readFileSync(fileURLToPath(new URL('../public/docs/developer.md', import.meta.url)), 'utf8');
     const { html } = await run(src);
     expect(html).toContain('data-m2-frame="code"');
     expect(html).toContain('data-m2-frame="mermaid"');
+     expect(html).toContain('data-m2-frame="x3d"');
     expect(svgsIn(html).length).toBeGreaterThanOrEqual(3);
   });
+});
+describe('X3D', () => {
+   it('resources and fences become sandboxed frames with an escaped source fallback', async () => {
+     const res = (await run('<<<S type="model/x3d+xml" title="Scene"\n<X3D><Scene/></X3D>\nS\n')).html;
+     expect(res).toContain('data-m2-frame="x3d"');
+     expect(res).toContain('src="/sandbox/x3d.html"');
+     expect(res).toContain('&lt;X3D&gt;&lt;Scene/&gt;&lt;/X3D&gt;');
+     expect(res).toContain('sandbox="allow-scripts"');
+     expect(res).not.toContain('allow-same-origin');
+     expect((await run('```x3d\n<X3D/>\n```\n')).html).toContain('data-m2-frame="x3d"');
+     const vrml = (await run('<<<V type="model/x3d-vrml"\n#X3D V4.0 utf8\nShape {}\nV\n')).html;
+     expect(vrml).toContain('data-m2-lang="vrml"');
+     expect(x3dHandler.types).toContain('model/vrml');
+   });
+   it('invalid UTF-8 is a handler error', async () => {
+     expect((await run('<<<S type="model/x3d+xml" encoding="base64"\n/w==\nS\n')).html).toContain('handler-error');
+   });
 });
 describe('embedded pages', () => {
   const src = '<<<P type="text/uri-list" title="Map"\n# a comment\nhttps://maps.example/embed?x=1\nP\n';

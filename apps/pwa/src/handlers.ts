@@ -15,6 +15,7 @@ import {
  * - code: read-only Monaco editor in a sandboxed, opaque-origin frame;
  * - text/vnd.mermaid: Mermaid in a sandboxed frame;
  * - application/x-tex, application/mathml+xml: MathJax to SVG, shown through <img>;
+  * - model/x3d+xml, model/x3d-vrml, model/vrml: X3D scenes drawn by X_ITE in a sandboxed frame;
  * - text/uri-list: an embedded web page in a sandboxed frame;
  * - application/vnd.google.charts+json: Google Charts in a sandboxed frame.
  *
@@ -28,11 +29,12 @@ import {
 const MAX_CODE = 200_000;
 const MAX_DIAGRAM = 50_000;
 const MAX_MATH = 20_000;
+const MAX_SCENE = 2_000_000;
 const MAX_CHART_BYTES = 200_000;
 const MAX_CHART_ROWS = 5000;
 const SHOWN_CHART_ROWS = 50;
 
-export type FrameKind = 'code' | 'mermaid' | 'gchart';
+export type FrameKind = 'code' | 'mermaid' | 'gchart' | 'x3d';
 
 /** Fence info-string names → Monaco language ids (basic languages only). */
 const LANGS: Readonly<Record<string, string>> = {
@@ -165,6 +167,28 @@ export const mathHandler: Handler = {
     const data = encodeBase64(new TextEncoder().encode(svg));
     return `<div class="m2-math-block"><img class="m2-math" alt="${escapeHtml(src)}" src="data:image/svg+xml;base64,${data}"></div>`;
   },
+};
+/** Registered X3D media types (XML and classic VRML encodings) and VRML97. */
+export const X3D_TYPES: readonly string[] = ['model/x3d+xml', 'model/x3d-vrml', 'model/vrml'];
+/**
+  * X3D scenes, drawn by X_ITE in an opaque-origin frame (/sandbox/x3d.html).
+  * The frame fetches nothing from the web; external references only work as
+  * data: URLs. The escaped source stays visible until the scene has drawn.
+  */
+export const x3dHandler: Handler = {
+   types: X3D_TYPES,
+   capabilities: ['view'],
+   render: (bytes, ctx) =>
+     new Promise<string>((resolve) => {
+       // A throw inside the executor rejects: handler-error fallback.
+       const src = strictUtf8(bytes);
+       if (src.length > MAX_SCENE) throw new Error('scene too large');
+       const lang = ctx.type === 'model/x3d+xml' ? 'xml' : 'vrml';
+       const title = ctx.node?.resource.attributes.get('title') ?? 'X3D scene';
+       resolve(
+         `<div class="m2-frame-host m2-x3d"><pre class="m2-frame-fallback"><code class="language-${lang}">${escapeHtml(src)}</code></pre>${frameHtml('x3d', src, title, lang)}</div>`,
+       );
+     }),
 };
 
 // ------------------------------------------------------------------ remote views
@@ -335,6 +359,6 @@ function chartHandler(o: PwaHandlerOptions): Handler {
 
 export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
   const r = defaultHandlers();
-  for (const h of [codeHandler, mermaidHandler, mathHandler, pageHandler(o), chartHandler(o)]) r.register(h);
+   for (const h of [codeHandler, mermaidHandler, mathHandler, x3dHandler, pageHandler(o), chartHandler(o)]) r.register(h);
   return r;
 }

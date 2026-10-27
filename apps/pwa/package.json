@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+     "postinstall": "node scripts/vendor-x_ite.mjs",
+     "predev": "node scripts/vendor-x_ite.mjs",
+     "dev": "vite",
+     "prebuild": "node scripts/vendor-x_ite.mjs",
+     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
@@ -14,7 +17,8 @@
     "age-encryption": "^0.2.4",
     "mathjax-full": "^3.2.2",
     "mermaid": "^11.4.0",
-    "monaco-editor": "^0.52.0"
+     "monaco-editor": "^0.52.0",
+     "x_ite": "^10.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

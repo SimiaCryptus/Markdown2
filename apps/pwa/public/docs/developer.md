@@ -3,7 +3,7 @@ title: Developer features
 ---
 # Developer features
 
-Three handlers make Markdown2 at home in technical writing:
+Four handlers make Markdown2 at home in technical writing:
 
 - code blocks that know their language
 - Mermaid diagrams
@@ -121,10 +121,46 @@ QUADRATIC
 MathJax turns each formula into an SVG image in this tab, using only its `base` and `ams` TeX packages. The image cannot run anything, and its alternative text is the source.
 
 Maths is block-level only. Markdown2 adds no syntax, so there is no inline `$…$`.
+## 3D scenes with X3D
+X3D is the ISO standard for 3D content on the web. A resource of type `model/x3d+xml` is drawn by X_ITE as an interactive scene. Drag to turn it, scroll to zoom:
+<<<SCENE type="model/x3d+xml" title="A box and a sphere"
+<X3D profile='Interchange' version='4.0'>
+   <Scene>
+     <Background skyColor='0.96 0.93 0.85'/>
+     <Viewpoint position='0 0 8' description='Front'/>
+     <Transform translation='-1.5 0 0' rotation='1 1 0 0.6'>
+       <Shape>
+         <Appearance><Material diffuseColor='0.06 0.42 0.37'/></Appearance>
+         <Box size='2 2 2'/>
+       </Shape>
+     </Transform>
+     <Transform translation='1.5 0 0'>
+       <Shape>
+         <Appearance><Material diffuseColor='0.69 0.5 0.16'/></Appearance>
+         <Sphere radius='1.2'/>
+       </Shape>
+     </Transform>
+   </Scene>
+</X3D>
+SCENE
+The classic VRML encoding works as `model/x3d-vrml`, and VRML97 as `model/vrml`. A fenced block named `x3d` holds the XML encoding:
+```x3d
+<X3D profile='Interchange' version='4.0'>
+   <Scene>
+     <Shape>
+       <Appearance><Material diffuseColor='0.7 0.2 0.1'/></Appearance>
+       <Cone height='2' bottomRadius='1'/>
+     </Shape>
+   </Scene>
+</X3D>
+```
+- The scene runs in a sandboxed frame with an opaque origin. It cannot reach this app, its storage, your keys or the toolbar.
+- Nothing is fetched from the web. Textures, `Inline` worlds and other external files only work as `data:` URLs.
+- Until the scene has drawn, and whenever it cannot be drawn, you see its source.
+
 
 ## Safety, in one list
 
-- **Sandboxed.** Monaco and Mermaid run in frames with an opaque origin. They cannot reach this app, its storage, your keys or the toolbar.
 - **Source on request.** A frame receives only its own source, and only once.
 - **Inert images.** Maths is an image, never live markup.
 - **Graceful.** Offline, blocked or broken, every block falls back to its source text.
@@ -133,3 +169,5 @@ Maths is block-level only. Markdown2 adds no syntax, so there is no inline `$…
 
 - [Back to the welcome page](index.md)
 - Tour stop 7: [Web pages and charts](embeds.md), embedded pages and Google Charts, loaded only when you allow them.
+- interactive 3D scenes in X3D
+- **Sandboxed.** Monaco, Mermaid and X3D scenes run in frames with an opaque origin. They cannot reach this app, its storage, your keys or the toolbar.

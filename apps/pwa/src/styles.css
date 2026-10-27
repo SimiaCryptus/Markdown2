@@ -794,6 +794,8 @@ body[data-dragging] iframe { pointer-events: none; }
   #preview pre.m2-code[data-m2-ready] { padding: 0; overflow: hidden; }
   #preview pre.m2-code[data-m2-ready] > code { display: block; }
   #preview .m2-diagram .m2-frame-fallback { margin: 0; }
+   #preview .m2-x3d .m2-frame-fallback { margin: 0; max-height: 20em; overflow: auto; }
+   #preview .m2-x3d .m2-frame { border-radius: 8px; }
   #preview .m2-frame-host[data-m2-error]::after {
     content: '⚠ ' attr(data-m2-error);
     display: block;

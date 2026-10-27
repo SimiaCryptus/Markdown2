@@ -3,3 +3,4 @@ dist/
 coverage/
 reports/
 *.tsbuildinfo
+public/vendor/

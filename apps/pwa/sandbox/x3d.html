@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for X3D scenes (X_ITE). X_ITE and its components come from this
+      site (/vendor/x_ite). Nothing is fetched from the web: absolute textures, Inline worlds
+      and other external references are blocked here. 'unsafe-eval' lets X_ITE run, including
+      X3D Script nodes; the frame cannot reach the app, its storage or the network beyond this
+      site's public files.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; media-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self' data: blob: ws:"
+    />
+    <title>3D scene</title>
+    <style>
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      #root { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/x3d.ts"></script>
+  </body>
+</html>
