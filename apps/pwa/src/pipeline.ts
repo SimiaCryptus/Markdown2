@@ -6,6 +6,7 @@ import {
   parse,
   renderHtml,
   resolveDocument,
+  type CodeFenceRenderer,
   type Decoder,
   type DecoderRegistry,
   type Diagnostic,
@@ -24,6 +25,8 @@ export interface PipelineOptions {
   handlers: HandlerRegistry;
   uriPolicy?: UriPolicy;
   signal?: AbortSignal;
+  /** Presentation for fenced code, such as the Monaco frames. */
+  codeFence?: CodeFenceRenderer;
 }
 
 export interface PipelineResult {
@@ -52,7 +55,10 @@ export async function runPipeline(src: string, o: PipelineOptions): Promise<Pipe
     ...(o.uriPolicy ? { uriPolicy: o.uriPolicy } : {}),
     ...(o.signal ? { signal: o.signal } : {}),
   });
-  const html = await renderHtml(resolved, { handlers: o.handlers });
+  const html = await renderHtml(resolved, {
+    handlers: o.handlers,
+    ...(o.codeFence ? { codeFence: o.codeFence } : {}),
+  });
   const resources = new Map(collectResources(resolved).map((e) => [e.node.id, e] as const));
   const styles = collectStyles(resolved);
   diagnostics.push(...styles.diagnostics);

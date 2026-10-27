@@ -181,6 +181,43 @@ body {
   padding: 0.5rem 0.9rem;
   animation: beckon 2.4s ease-in-out infinite;
 }
+/* help menu */
+.menu-wrap { position: relative; display: flex; }
+.menu {
+   position: absolute;
+   right: 0;
+   top: calc(100% + 8px);
+   z-index: 40;
+   width: min(20rem, 90vw);
+   display: grid;
+   gap: 1px;
+   padding: 0.4rem;
+   background: var(--surface);
+   color: var(--text);
+   border: 1px solid var(--rule);
+   border-radius: 12px;
+   box-shadow: var(--shadow-pop);
+   animation: rise 0.18s var(--ease);
+}
+.menu-head { padding: 0.45rem 0.65rem 0.3rem; font: 600 0.62rem/1 var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.menu-item {
+   appearance: none;
+   border: 0;
+   background: none;
+   color: inherit;
+   font: inherit;
+   text-align: left;
+   display: grid;
+   gap: 0.1rem;
+   padding: 0.5rem 0.65rem;
+   border-radius: 8px;
+   cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface-2); outline: none; box-shadow: inset 0 0 0 1px var(--gold); }
+.menu-item[aria-current='page'] .menu-title::before { content: '❧ '; color: var(--gold); }
+.menu-title { font: 600 0.9rem/1.3 var(--serif); }
+.menu-sub { font-size: 0.74rem; color: var(--muted); }
+.menu-sep { height: 1px; margin: 0.3rem 0.2rem; background: var(--rule); }
 
 @media (max-width: 1240px) {
   .tool .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -747,6 +784,27 @@ button.diag:hover { border-color: var(--vermilion); transform: translateX(2px); 
     font: 0.85rem var(--sans);
   }
   #preview .m2-prose-image::before { content: '🖼 '; }
+  /* developer handlers: frames, diagrams and maths */
+  #preview .m2-frame { display: block; width: 100%; height: 0; border: 0; background: transparent; }
+  #preview .m2-frame-host[data-m2-ready] .m2-frame-fallback { display: none; }
+  #preview pre.m2-code[data-m2-ready] { padding: 0; overflow: hidden; }
+  #preview pre.m2-code[data-m2-ready] > code { display: block; }
+  #preview .m2-diagram .m2-frame-fallback { margin: 0; }
+  #preview .m2-frame-host[data-m2-error]::after {
+    content: '⚠ ' attr(data-m2-error);
+    display: block;
+    margin-top: 0.4rem;
+    font: 0.74rem/1.4 var(--sans);
+    color: var(--vermilion);
+    white-space: normal;
+  }
+  #preview .m2-math-block { text-align: center; overflow-x: auto; margin: 0 0 1.2em; }
+  #preview .m2-math { max-width: 100%; }
+  :root[data-theme='dark'] #preview .m2-math { filter: invert(0.9); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) #preview .m2-math { filter: invert(0.9); }
+  }
+
 
   @media (max-width: 700px) {
     #preview md2-document[data-m2-root] { margin: 1rem auto; padding: 1.5rem 1.25rem 2.5rem; }

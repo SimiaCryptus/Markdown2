@@ -9,8 +9,21 @@ import { safeSaveName } from './save.js';
  * Renders the M2SS styling tree (style.md §4): `md2-document`, `md2-section`,
  * `md2-resource`, `md2-view` and `md2-fallback` over CommonMark HTML.
  */
+/** Presentation hook for fenced code that no compatibility alias handles (§7.2). */
+export type CodeFenceRenderer = (lang: string, body: string, info: string) => Promise<string | null>;
+
 export interface RenderOptions {
   handlers?: HandlerRegistry;
+  /**
+   * Optional presentation for fenced code, for example syntax highlighting.
+   * Called only when no alias handler takes the fence. Return null to keep the
+   * default `pre > code`. Output should keep that shape (style.md §4.1).
+   */
+  codeFence?: CodeFenceRenderer;
+}
+interface Ctx {
+  handlers: HandlerRegistry;
+  codeFence?: CodeFenceRenderer;
 }
 
 const encoder = new TextEncoder();
@@ -55,7 +68,7 @@ function attachmentChild(entry: ResolvedResource): Child {
   };
 }
 
-async function renderChild(entry: ResolvedResource, handlers: HandlerRegistry, rel: KnownRel): Promise<Child> {
+async function renderChild(entry: ResolvedResource, ctx: Ctx, rel: KnownRel): Promise<Child> {
   const { node, result } = entry;
   // Metadata is consumed and stylesheets are applied; neither is rendered inline.
   if (rel === 'metadata' || rel === 'stylesheet') {
@@ -64,10 +77,10 @@ async function renderChild(entry: ResolvedResource, handlers: HandlerRegistry, r
   if (rel === 'attachment') return attachmentChild(entry);
 
   const type = typeEssence(node.resource.type);
-  const handler = result.state === 'decoded' ? handlers.get('view', node.resource.type) : undefined;
+  const handler = result.state === 'decoded' ? ctx.handlers.get('view', node.resource.type) : undefined;
   if (handler === undefined || result.bytes === undefined || type === undefined) return fallbackChild(entry);
 
-  const children = (): Promise<string> => renderDocument(entry.children ?? [], handlers, '');
+  const children = (): Promise<string> => renderDocument(entry.children ?? [], ctx, '');
   // A decoded text/markdown resource has an md2-document as its only child.
   if (type === 'text/markdown' && entry.children !== undefined) return { html: await children() };
   try {
@@ -80,16 +93,24 @@ async function renderChild(entry: ResolvedResource, handlers: HandlerRegistry, r
 }
 
 /** Fenced code in prose: compatibility aliases (§7.2) select a handler, else plain code. */
-async function renderFence(info: string, body: string, handlers: HandlerRegistry): Promise<string> {
+async function renderFence(info: string, body: string, ctx: Ctx): Promise<string> {
   const lang = info.split(/\s+/)[0] ?? '';
   const type = fenceAliasType(lang);
-  const handler = type === undefined ? undefined : handlers.get('view', type);
+  const handler = type === undefined ? undefined : ctx.handlers.get('view', type);
   if (handler !== undefined && type !== undefined) {
     try {
       const html = await handler.render(encoder.encode(body), { type, children: () => Promise.resolve('') });
       return handler.sandbox === true ? sandboxFrame(html, lang) : html;
     } catch {
       // Not usable by the aliased handler: show it as ordinary code.
+    }
+  }
+  if (ctx.codeFence !== undefined && lang !== '') {
+    try {
+      const html = await ctx.codeFence(lang, body, info);
+      if (html !== null) return html;
+    } catch {
+      // The presentation hook failed: show ordinary code.
     }
   }
   const cls = lang === '' ? '' : ` class="language-${escapeHtml(lang)}"`;
@@ -130,7 +151,7 @@ function resourceAttrs(
   return out;
 }
 
-async function renderItems(nodes: readonly ResolvedNode[], handlers: HandlerRegistry): Promise<RenderedBlock[]> {
+async function renderItems(nodes: readonly ResolvedNode[], ctx: Ctx): Promise<RenderedBlock[]> {
   const { associations, orphans } = analyseRels(nodes.map((n) => (n.kind === 'prose' ? n : n.node)));
   const orphanSet = new Set(orphans);
   const byId = new Map<string, ResolvedResource>();
@@ -153,7 +174,7 @@ async function renderItems(nodes: readonly ResolvedNode[], handlers: HandlerRegi
     }
   }
 
-  const fence = (info: string, body: string): Promise<string> => renderFence(info, body, handlers);
+  const fence = (info: string, body: string): Promise<string> => renderFence(info, body, ctx);
   const items: RenderedBlock[] = [];
   for (const n of nodes) {
     if (n.kind === 'prose') {
@@ -166,8 +187,8 @@ async function renderItems(nodes: readonly ResolvedNode[], handlers: HandlerRegi
 
     // "Render at most one of the two" (A.1, spec-issues #18).
     const candidates = rel === 'metadata' || rel === 'stylesheet' ? [n] : [n, ...(alternates.get(id) ?? [])];
-    const shown = candidates.find((c) => renderable(c, handlers)) ?? n;
-    const child = await renderChild(shown, handlers, rel);
+    const shown = candidates.find((c) => renderable(c, ctx.handlers)) ?? n;
+    const child = await renderChild(shown, ctx, rel);
 
     const attrs = resourceAttrs(n, shown, rel, child.error);
     if (shown !== n) attrs.push(['data-m2-shown', shown.node.id]);
@@ -205,15 +226,15 @@ function sectionize(items: readonly RenderedBlock[]): string {
   return out.join('\n');
 }
 
-async function renderDocument(
-  nodes: readonly ResolvedNode[],
-  handlers: HandlerRegistry,
-  attrs: string,
-): Promise<string> {
-  return `<md2-document${attrs}>${sectionize(await renderItems(nodes, handlers))}</md2-document>`;
+async function renderDocument(nodes: readonly ResolvedNode[], ctx: Ctx, attrs: string): Promise<string> {
+  return `<md2-document${attrs}>${sectionize(await renderItems(nodes, ctx))}</md2-document>`;
 }
 
 /** Render a resolved tree to the M2SS styling tree, as an HTML fragment. DOM-free. */
 export function renderHtml(nodes: readonly ResolvedNode[], opts: RenderOptions = {}): Promise<string> {
-  return renderDocument(nodes, opts.handlers ?? defaultHandlers(), ' data-m2-root');
+  const ctx: Ctx = {
+    handlers: opts.handlers ?? defaultHandlers(),
+    ...(opts.codeFence ? { codeFence: opts.codeFence } : {}),
+  };
+  return renderDocument(nodes, ctx, ' data-m2-root');
 }

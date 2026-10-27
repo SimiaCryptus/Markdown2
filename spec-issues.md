@@ -82,3 +82,10 @@ Seeded from plan.md §11; additions below.
 27. **M2SS: global names**: `@font-face`, `@keyframes`, `@property` and `@counter-style` names are
      global in a page, so a document can redefine a family used by reader chrome. The PWA uses only
      generic families in its chrome. Consider listing this in style.md §8.2.
+28. **Presenting plain fenced code**: §7.2 covers aliases that select a handler, but not syntax
+     highlighting of ordinary code. Core exposes a `codeFence` render hook; the PWA draws a Monaco
+     frame *inside* `pre > code.language-x`, keeping style.md §4.1's tree. Consider stating in
+     style.md that handlers may draw inside the code element of a fence.
+29. **Opaque-origin handler frames need CORS**: sandboxed frames without `allow-same-origin` load
+     their module scripts as CORS requests with `Origin: null`. Deployments must allow this for
+     static assets. Consider a note in the Viewer API companion.

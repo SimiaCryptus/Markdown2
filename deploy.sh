@@ -5,6 +5,7 @@ die() {
 
 build() {
   pushd packages/core || die "Failed to enter packages/core"
+  npm run fix || die "Failed to build packages/core"
   npm run check || die "Failed to build packages/core"
   popd
   pushd apps/pwa || die "Failed to enter apps/pwa"

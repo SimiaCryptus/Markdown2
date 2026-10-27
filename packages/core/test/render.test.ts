@@ -186,6 +186,18 @@ describe('fence aliases (§7.2, F.3)', () => {
   });
 });
 describe('prototype keys never act as table entries', () => {
+  it('a code fence hook may present code; aliases and failures keep their path', async () => {
+    const codeFence = (lang: string, body: string): Promise<string | null> => {
+      if (lang === 'bad') return Promise.reject(new Error('boom'));
+      return Promise.resolve(lang === 'ts' ? `<pre><code class="language-ts">HL:${body}</code></pre>` : null);
+    };
+    expect(await render('```ts\nlet a\n```\n', {}, { codeFence })).toContain('HL:let a');
+    expect(await render('```py\nx\n```\n', {}, { codeFence })).toContain(
+      '<pre><code class="language-py">x</code></pre>',
+    );
+    expect(await render('```bad\ny\n```\n', {}, { codeFence })).toContain('<code class="language-bad">y</code>');
+    expect(await render('```json\n{"a":1}\n```\n', {}, { codeFence })).toContain('<pre class="m2-json">');
+  });
   it('renders types and fences named after Object.prototype members', async () => {
     const out = await render('<<<X type="constructor"\nx\nX\n\n```constructor\ny\n```\n');
     expect(out).toContain('md2-fallback');

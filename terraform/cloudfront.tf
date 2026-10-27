@@ -28,6 +28,26 @@ resource "aws_cloudfront_function" "rewrite_index" {
    }
  EOT
 }
+# Sandboxed frames (code editor, diagrams) have an opaque origin, so their
+# module scripts, styles and fonts are CORS requests. Everything here is
+# public and served without credentials.
+resource "aws_cloudfront_response_headers_policy" "website" {
+  name    = "${replace(var.domain_name, ".", "-")}-headers"
+  comment = "CORS for sandboxed frames"
+  cors_config {
+    access_control_allow_credentials = false
+    origin_override                  = true
+    access_control_allow_headers {
+      items = ["*"]
+    }
+    access_control_allow_methods {
+      items = ["GET", "HEAD", "OPTIONS"]
+    }
+    access_control_allow_origins {
+      items = ["*"]
+    }
+  }
+}
 
 
 resource "aws_cloudfront_distribution" "website" {
@@ -50,6 +70,7 @@ resource "aws_cloudfront_distribution" "website" {
     target_origin_id       = "s3-${aws_s3_bucket.website.id}"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.website.id
    function_association {
      event_type   = "viewer-request"
      function_arn = aws_cloudfront_function.rewrite_index.arn

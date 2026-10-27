@@ -1,7 +1,18 @@
 // Barebones offline support: network first, cache fallback, same-origin GETs only.
 // Remote `uri` resources are cross-origin and are never cached here.
-const CACHE = 'm2-v1';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
+const CACHE = 'm2-v3';
+const SHELL = [
+   '/',
+   '/index.html',
+   '/manifest.webmanifest',
+   '/icon.svg',
+   '/docs/index.md',
+   '/docs/guide.md',
+   '/docs/resources.md',
+   '/docs/trust.md',
+   '/docs/styles.md',
+   '/docs/developer.md',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

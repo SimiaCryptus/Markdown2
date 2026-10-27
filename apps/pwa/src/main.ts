@@ -5,7 +5,6 @@ import {
   ByteQuota,
   collectResources,
   composeCascade,
-  defaultHandlers,
   GrantSet,
   selectionFor,
   type DecodeState,
@@ -15,8 +14,12 @@ import {
   type StyleSelection,
 } from '@markdown2/core';
 import { createBrowserUriPolicy, createRegistry, type KeyGrant } from './decoders.js';
+import { DOCS } from './docs.js';
 import { downloadBytes, fromFile, fromHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
+import { installFrameHost } from './frames.js';
+import { codeFence, createHandlers } from './handlers.js';
 import { describeNode, nextGate, runPipeline, type PipelineResult } from './pipeline.js';
+import { docLinkTarget, docNameFor, fetchDocument, resolveDocUrl } from './remote-doc.js';
 import { SAMPLE } from './sample.js';
 import { planSave } from './save-plan.js';
 
@@ -45,6 +48,8 @@ const saveStateEl = $('save-state');
 const docNameEl = $('doc-name');
 const diagSummary = $<HTMLButtonElement>('diag-summary');
 const dropEl = $('drop');
+const helpBtn = $<HTMLButtonElement>('help-btn');
+const helpMenu = $('help-menu');
 
 const DRAFT_KEY = 'm2.draft';
 const ORIGINS_KEY = 'm2.uri-origins';
@@ -61,7 +66,7 @@ const narrow = window.matchMedia('(max-width: 900px)');
 
 // ---------------------------------------------------------------- state
 const registry = createRegistry();
-const handlers = defaultHandlers();
+const handlers = createHandlers();
 let grants = new GrantSet(); // in memory only; cleared on tab close
 let origins = loadOrigins();
 const uriPolicy = createBrowserUriPolicy({ origins: () => origins });
@@ -72,6 +77,12 @@ let fileName = 'untitled.md';
 let fileHandle: FileSystemFileHandle | undefined;
 /** Text as last opened from or saved to a file; null for a local draft. */
 let savedText: string | null = null;
+/** Where the open document came from, when it was opened through `?url=`. */
+let docUrl: URL | null = null;
+/** Whether edits are autosaved as the local draft. Off for documents opened by URL. */
+let autosave = true;
+/** Address of the open document, restored when a Back/Forward navigation is cancelled. */
+let currentHref = location.href;
 
 // Styles (style.md §6). Constructable stylesheets are not subject to CSP style-src.
 const cascadeSheet = new CSSStyleSheet();
@@ -143,6 +154,10 @@ function applyTheme(): void {
   $('theme-label').textContent = name;
   $('theme').title = `Theme: ${name} (click to change)`;
 }
+function isDark(): boolean {
+  return theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+}
+installFrameHost(isDark);
 
 type View = 'write' | 'split' | 'read';
 const isView = (v: unknown): v is View => v === 'write' || v === 'split' || v === 'read';
@@ -230,6 +245,14 @@ function updateCounts(): void {
 }
 
 function updateSaveState(): void {
+   if (docUrl !== null) {
+     const dirty = savedText !== editor.value;
+     saveStateEl.dataset.state = dirty ? 'dirty' : 'saved';
+     saveStateEl.textContent = dirty
+       ? `Edited copy from ${docUrl.host} · not autosaved`
+       : `Opened from ${docUrl.host} · edits not autosaved`;
+     return;
+   }
   if (savedText === null) {
     saveStateEl.dataset.state = 'draft';
     saveStateEl.textContent = 'Local draft · autosaved';
@@ -255,7 +278,7 @@ async function refresh(): Promise<void> {
   controller = ctl;
   const mine = ++seq;
   try {
-    const r = await runPipeline(editor.value, { registry, grants, handlers, uriPolicy, signal: ctl.signal });
+    const r = await runPipeline(editor.value, { registry, grants, handlers, uriPolicy, codeFence, signal: ctl.signal });
     if (mine !== seq) return; // a newer run superseded this one
     current = r;
     preview.innerHTML = r.html; // renderHtml escapes everything it emits
@@ -272,10 +295,18 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 function schedule(): void {
   clearTimeout(timer);
   timer = setTimeout(() => {
-    localStorage.setItem(DRAFT_KEY, editor.value);
+     timer = undefined;
+     if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
     updateCounts();
     void refresh();
   }, 250);
+}
+/** Write a pending autosave now, before the editor content is replaced. */
+function flushDraft(): void {
+   if (timer === undefined) return;
+   clearTimeout(timer);
+   timer = undefined;
+   if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
 }
 
 // ---------------------------------------------------------------- styles
@@ -640,15 +671,25 @@ function showDiagnostics(diags: readonly Diagnostic[]): void {
 }
 
 // ---------------------------------------------------------------- documents
-function load(doc: OpenedDocument, fromFileSystem = true): void {
+type DocSource = { kind: 'file' } | { kind: 'share' } | { kind: 'draft' } | { kind: 'url'; url: URL };
+
+function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
+   flushDraft();
   editor.value = doc.text;
   setDocName(doc.name);
   fileHandle = doc.handle;
-  savedText = fromFileSystem ? doc.text : null;
+   docUrl = source.kind === 'url' ? source.url : null;
+   // Documents opened by URL (such as the help pages) never overwrite the local draft.
+   autosave = source.kind !== 'url';
+   savedText = source.kind === 'file' || source.kind === 'url' ? doc.text : null;
   grants = new GrantSet(); // keys never carry over to another document
   overrides = new Map(); // per-document selections start from defaults and preferences
   docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
-  localStorage.setItem(DRAFT_KEY, doc.text);
+   if (source.kind === 'file' || source.kind === 'share') localStorage.setItem(DRAFT_KEY, doc.text);
+   if (source.kind !== 'url' && new URLSearchParams(location.search).has('url')) {
+     history.replaceState(null, '', location.pathname);
+   }
+   currentHref = location.href;
   editor.scrollTop = 0;
   editor.setSelectionRange(0, 0);
   syncGutter();
@@ -656,7 +697,7 @@ function load(doc: OpenedDocument, fromFileSystem = true): void {
   updateCursor();
   updateCounts();
   updateSaveState();
-  setStatus(`Opened ${doc.name}`);
+   setStatus(source.kind === 'draft' ? 'Back to your draft' : `Opened ${doc.name}`);
   void refresh();
 }
 
@@ -678,6 +719,14 @@ async function saveDoc(): Promise<void> {
       fileHandle = outcome.handle;
       setDocName(outcome.handle.name);
     }
+     if (docUrl !== null) {
+       // Saved: from now on this is an ordinary document with an autosaved draft.
+       docUrl = null;
+       autosave = true;
+       localStorage.setItem(DRAFT_KEY, text);
+       history.replaceState(null, '', location.pathname);
+       currentHref = location.href;
+     }
     savedText = text;
     updateSaveState();
     setStatus(outcome.kind === 'file' ? `Saved ${fileName}` : `Downloaded ${fileName}`);
@@ -710,9 +759,121 @@ function editPolicy(): void {
   void refresh();
 }
 
-function openHelp(): void {
+function openKeys(): void {
   const dialog = $<HTMLDialogElement>('help');
   if (!dialog.open) dialog.showModal();
+}
+// ---------------------------------------------------------------- documents by URL, help menu
+type Nav = 'push' | 'replace' | 'none';
+/** Unsaved edits to a URL document are not autosaved; ask before discarding them. */
+function confirmDiscard(): boolean {
+   if (autosave || savedText === null || savedText === editor.value) return true;
+   return confirm('This document was opened from a URL and your edits are not autosaved. Discard them?');
+}
+function urlParamFor(u: URL): string {
+   const v = u.origin === location.origin ? `${u.pathname}${u.search}` : u.href;
+   return encodeURIComponent(v).replace(/%2F/gi, '/').replace(/%3A/gi, ':');
+}
+let opening: AbortController | null = null;
+/**
+  * Open a document by URL. Same-origin documents open directly; others ask
+  * first. Opening a document never unlocks or fetches anything inside it.
+  */
+async function openUrl(raw: string, nav: Nav): Promise<boolean> {
+   const u = resolveDocUrl(raw, location.href);
+   if (u === null) {
+     setStatus(`Cannot open "${raw}": use a path on this site or an https: URL`, true);
+     return false;
+   }
+   const same = u.origin === location.origin;
+   if (
+     !same &&
+     !confirm(
+       `Open the document at\n${u.href}?\n\nThat server will learn that you opened it. Nothing inside the document is unlocked or fetched.`,
+     )
+   ) {
+     setStatus('Not opened');
+     return false;
+   }
+   opening?.abort();
+   const ctl = new AbortController();
+   opening = ctl;
+   setStatus(`Opening ${same ? u.pathname : u.href}…`, true);
+   try {
+     const text = await fetchDocument(u, { sameOrigin: same, signal: ctl.signal });
+     if (opening !== ctl) return false;
+     const target = `${location.pathname}?url=${urlParamFor(u)}`;
+     if (nav === 'push') history.pushState(null, '', target);
+     else if (nav === 'replace') history.replaceState(null, '', target);
+     load({ name: docNameFor(u), text }, { kind: 'url', url: u });
+     currentHref = location.href;
+     return true;
+   } catch (e) {
+     if (opening === ctl) setStatus(`Could not open ${u.href}: ${e instanceof Error ? e.message : String(e)}`, true);
+     return false;
+   } finally {
+     if (opening === ctl) opening = null;
+   }
+}
+function navigateTo(raw: string): void {
+   if (confirmDiscard()) void openUrl(raw, 'push');
+}
+function openDraft(nav: Nav): void {
+   if (nav === 'push') history.pushState(null, '', location.pathname);
+   else if (nav === 'replace') history.replaceState(null, '', location.pathname);
+   load({ name: 'untitled.md', text: localStorage.getItem(DRAFT_KEY) ?? SAMPLE }, { kind: 'draft' });
+}
+function promptUrl(): void {
+   const raw = prompt('Open a Markdown2 document from a URL.\nA path on this site (/docs/guide.md) or an https: address.', '');
+   if (raw !== null && raw.trim() !== '') navigateTo(raw.trim());
+}
+function menuItem(title: string, sub: string | undefined, onClick: () => void): HTMLButtonElement {
+   const b = el('button', 'menu-item');
+   b.type = 'button';
+   b.tabIndex = -1;
+   b.setAttribute('role', 'menuitem');
+   b.append(el('span', 'menu-title', title));
+   if (sub !== undefined) b.append(el('span', 'menu-sub', sub));
+   b.addEventListener('click', () => {
+     closeHelpMenu();
+     onClick();
+   });
+   return b;
+}
+function buildHelpMenu(): void {
+   const here = docUrl !== null && docUrl.origin === location.origin ? docUrl.pathname : null;
+   helpMenu.replaceChildren(el('div', 'menu-head', 'Documentation'));
+   for (const d of DOCS) {
+     const item = menuItem(d.title, d.summary, () => {
+       navigateTo(d.path);
+     });
+     if (d.path === here) item.setAttribute('aria-current', 'page');
+     helpMenu.append(item);
+   }
+   const sep = el('div', 'menu-sep');
+   sep.setAttribute('role', 'separator');
+   helpMenu.append(sep);
+   if (docUrl !== null) {
+     helpMenu.append(
+       menuItem('Back to my draft', 'Your autosaved local draft', () => {
+         if (confirmDiscard()) openDraft('push');
+       }),
+     );
+   }
+   helpMenu.append(menuItem('Open a URL…', 'A path on this site or an https: address', promptUrl));
+   helpMenu.append(menuItem('Keyboard shortcuts', 'Press ? at any time', openKeys));
+}
+function openHelpMenu(): void {
+   buildHelpMenu();
+   helpMenu.hidden = false;
+   helpBtn.setAttribute('aria-expanded', 'true');
+   helpMenu.querySelector<HTMLButtonElement>('.menu-item')?.focus();
+}
+function closeHelpMenu(focusButton = false): void {
+   if (helpMenu.hidden) return;
+   helpMenu.hidden = true;
+   helpBtn.setAttribute('aria-expanded', 'false');
+   if (focusButton) helpBtn.focus();
 }
 
 // ---------------------------------------------------------------- wiring
@@ -747,8 +908,37 @@ $('theme').addEventListener('click', () => {
   theme = theme === 'auto' ? 'light' : theme === 'light' ? 'dark' : 'auto';
   localStorage.setItem(THEME_KEY, theme);
   applyTheme();
+  void refresh(); // frames pick up the new theme
 });
-$('help-btn').addEventListener('click', openHelp);
+helpBtn.addEventListener('click', () => {
+   if (helpMenu.hidden) openHelpMenu();
+   else closeHelpMenu();
+});
+helpMenu.addEventListener('keydown', (e) => {
+   const items = [...helpMenu.querySelectorAll<HTMLButtonElement>('.menu-item')];
+   if (items.length === 0) return;
+   const at = items.findIndex((b) => b === document.activeElement);
+   let next: number;
+   if (e.key === 'ArrowDown') next = (at + 1) % items.length;
+   else if (e.key === 'ArrowUp') next = at <= 0 ? items.length - 1 : at - 1;
+   else if (e.key === 'Home') next = 0;
+   else if (e.key === 'End') next = items.length - 1;
+   else if (e.key === 'Escape') {
+     e.preventDefault();
+     closeHelpMenu(true);
+     return;
+   } else if (e.key === 'Tab') {
+     closeHelpMenu();
+     return;
+   } else return;
+   e.preventDefault();
+   items[next]?.focus();
+});
+document.addEventListener('pointerdown', (e) => {
+   if (helpMenu.hidden) return;
+   const t = e.target;
+   if (t instanceof Node && !helpMenu.contains(t) && !helpBtn.contains(t)) closeHelpMenu();
+});
 diagSummary.addEventListener('click', () => {
   openInspectorAt('diag');
 });
@@ -786,6 +976,10 @@ const isTyping = (t: EventTarget | null): boolean =>
 
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]')) return;
+   if (e.key === 'Escape' && !helpMenu.hidden) {
+     closeHelpMenu(true);
+     return;
+   }
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   if (mod && e.shiftKey && !e.altKey && key === 'u') {
@@ -815,7 +1009,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === '?' && !isTyping(e.target)) {
     e.preventDefault();
-    openHelp();
+     openKeys();
   }
 });
 
@@ -847,6 +1041,25 @@ window.launchQueue?.setConsumer((params) => {
   const h = params.files[0];
   if (h?.kind === 'file') void fromHandle(h as FileSystemFileHandle).then((d) => load(d));
 });
+// Links between documents opened by URL stay in the app; Back and Forward work.
+preview.addEventListener('click', (e) => {
+   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+   const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
+   if (!(a instanceof HTMLAnchorElement)) return;
+   const target = docLinkTarget(a.getAttribute('href') ?? '', docUrl, location.href);
+   if (target === null) return;
+   e.preventDefault();
+   navigateTo(target);
+});
+window.addEventListener('popstate', () => {
+   if (!confirmDiscard()) {
+     history.pushState(null, '', currentHref);
+     return;
+   }
+   const p = new URLSearchParams(location.search).get('url');
+   if (p !== null && p !== '') void openUrl(p, 'none');
+   else openDraft('none');
+});
 
 // ---------------------------------------------------------------- start
 for (const b of document.querySelectorAll<HTMLElement>('[data-tip]')) {
@@ -863,13 +1076,12 @@ const storedInspector = localStorage.getItem(INSPECTOR_KEY);
 setInspector(storedInspector === null ? !narrow.matches : storedInspector === 'open', false);
 selectTab('diag');
 
-// Share target (GET) and initial content.
+// Share target (GET), `?url=` and initial content.
 const params = new URLSearchParams(location.search);
 const shared = params.get('text');
-if (shared !== null) {
-  history.replaceState(null, '', location.pathname);
-  load({ name: `${params.get('title') ?? 'shared'}.md`, text: shared }, false);
-} else {
+const urlParam = params.get('url');
+
+function startDraft(): void {
   editor.value = localStorage.getItem(DRAFT_KEY) ?? SAMPLE;
   setDocName(fileName);
   renderGutter(true);
@@ -877,6 +1089,20 @@ if (shared !== null) {
   updateCounts();
   updateSaveState();
   void refresh();
+}
+if (shared !== null) {
+   history.replaceState(null, '', location.pathname);
+   load({ name: `${params.get('title') ?? 'shared'}.md`, text: shared }, { kind: 'share' });
+} else if (urlParam !== null && urlParam !== '') {
+   setDocName(fileName);
+   void openUrl(urlParam, 'replace').then((ok) => {
+     if (ok) return;
+     history.replaceState(null, '', location.pathname);
+     currentHref = location.href;
+     startDraft();
+   });
+} else {
+   startDraft();
 }
 
 // Offline support and update prompt.

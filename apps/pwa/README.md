@@ -44,6 +44,22 @@
 - **Offline**
   - Network-first service worker with a cache fallback.
   - Update prompt when a new version is ready.
+- **Developer handlers** (`src/handlers.ts`, demonstrated in `public/docs/developer.md`)
+  - Fenced code with a known language: read-only Monaco in a sandboxed frame (`/sandbox/code.html`),
+    inside the original `pre > code.language-x`. Code resources (`text/javascript`, …) too.
+  - `text/vnd.mermaid` and ```` ```mermaid ````: Mermaid (strict) in a sandboxed frame (`/sandbox/mermaid.html`).
+  - `application/x-tex`, ```` ```math ```` and `application/mathml+xml`: MathJax to SVG, shown through `<img>`.
+  - Frames have an opaque origin and show the escaped source until they report that they have drawn.
+    Their scripts are CORS requests, so production needs the CloudFront CORS policy in `terraform/`.
+- **Help and opening by URL**
+   - The Help menu opens the built-in documentation in `public/docs/`. Each page is a Markdown2
+     document that also demonstrates what it describes.
+   - `?url=` opens any document: a path on this site (`/?url=/docs/styles.md`) or an `https:` URL,
+     which asks first. Cookies are never sent to other sites, and nothing inside the document is
+     unlocked or fetched.
+   - Documents opened by URL are not autosaved, so they never overwrite the local draft. Links
+     between them stay in the app, and Back/Forward work.
+
 
 ## Deferred (plan M4 / M5)
 

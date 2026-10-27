@@ -1,0 +1,15 @@
+/** Built-in documentation, served from `public/docs` and opened through `?url=`. */
+export interface DocEntry {
+  path: string;
+  title: string;
+  summary: string;
+}
+
+export const DOCS: readonly DocEntry[] = [
+  { path: '/docs/index.md', title: 'Welcome', summary: 'What Markdown2 is, on one page' },
+  { path: '/docs/guide.md', title: 'Using the app', summary: 'Layouts, inspector, drafts and saving' },
+  { path: '/docs/resources.md', title: 'Resources and encodings', summary: 'Types, encodings, relationships, nesting' },
+  { path: '/docs/trust.md', title: 'Locks, keys and remote resources', summary: 'Nothing unlocks on its own' },
+  { path: '/docs/styles.md', title: 'Document styles', summary: 'Themes and toggles a document can offer' },
+  { path: '/docs/developer.md', title: 'Developer features', summary: 'Code with Monaco, Mermaid diagrams, MathJax' },
+];
