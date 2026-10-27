@@ -1,4 +1,4 @@
-# Markdown2
+# [Markdown2](https://md2.cognotik.com/)
 
 **Markdown, plus one idea:** you can embed opaque resources that declare their type and encoding, and those resources can nest inside each other.
 
