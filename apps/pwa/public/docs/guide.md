@@ -74,7 +74,9 @@ The safe default name is `page.bin`. The app offers `page.html` only after you c
 - **Ctrl+Shift+U** switches to the unstyled view and back.
 - **?** shows the keyboard sheet.
 
+- Dragging an image, link or text out of the page never drops it back into the app, so an accidental drag cannot replace your document. Dragging text within the editor still moves it.
 ## Next
 
 - [Resources and encodings](resources.md)
 - [Back to the welcome page](index.md)
+- [Markdown formatting](markdown.md)

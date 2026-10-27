@@ -91,3 +91,11 @@ Seeded from plan.md §11; additions below.
      static assets. A CORS policy that matches on `Origin` may not answer `null`; the deployment
      adds `Access-Control-Allow-Origin: *` unconditionally (CloudFront viewer-response function).
      Consider a note in the Viewer API companion.
+30. **Network access by a view, not a decoder**: embedded pages (`text/uri-list`) and Google Charts
+     decode without any capability (the bytes are an address or a description), but their views reach
+     the network. The PWA gates the view per resource (grant bound to the payload digest, never
+     propagated) and by the user's origin list, with the control in reader chrome. §5.5 only knows
+     decoder capabilities; consider describing view-level capabilities in the Viewer API companion.
+31. **GFM in prose**: tables and `~~strikethrough~~` follow GitHub Flavored Markdown, as style.md §4.1
+     anticipates for syntax extensions. The core spec does not name GFM; consider listing it as an
+     optional prose profile.

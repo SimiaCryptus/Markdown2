@@ -522,6 +522,9 @@ button.diag:hover { border-color: var(--vermilion); transform: translateX(2px); 
 .drop-card strong { font: 600 1.6rem var(--serif); }
 .drop-card span:last-child { color: var(--muted); font-size: 0.85rem; }
 .drop-orn { color: var(--gold); font-size: 2rem; }
+/* Drags that start in the app are never dropped into a frame (which would navigate it). */
+body[data-dragging] iframe { pointer-events: none; }
+
 
 /* ------------------------------------------------------------- dialogs */
 .dlg {
@@ -800,6 +803,44 @@ button.diag:hover { border-color: var(--vermilion); transform: translateX(2px); 
   }
   #preview .m2-math-block { text-align: center; overflow-x: auto; margin: 0 0 1.2em; }
   #preview .m2-math { max-width: 100%; }
+  /* tables and strikethrough */
+  #preview table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 0 0 1.2em;
+    font-size: 0.94em;
+    line-height: 1.5;
+    hyphens: none;
+  }
+  #preview :is(th, td) { padding: 0.45em 0.85em; border: 1px solid var(--rule); vertical-align: top; }
+  #preview th { background: var(--surface-2); font-weight: 600; }
+  #preview th:not([align]) { text-align: left; }
+  #preview tbody tr:nth-child(even) { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+  #preview del { color: var(--muted); text-decoration-color: var(--vermilion); }
+  /* embedded pages and charts */
+  #preview .m2-embed-frame {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 0;
+    border-radius: 8px;
+    background: var(--paper);
+  }
+  #preview .m2-embed-pending {
+    display: grid;
+    gap: 0.3rem;
+    padding: 0.9rem 1rem;
+    border: 1px dashed var(--gold);
+    border-radius: 8px;
+    background: var(--paper);
+    color: var(--muted);
+    font: 0.85rem/1.5 var(--sans);
+    overflow-wrap: anywhere;
+  }
+  #preview .m2-embed-host { font: italic 600 1rem var(--serif); color: var(--paper-ink); }
+  #preview .m2-chart-note { margin: 0 0 0.6rem; font: 0.78rem/1.4 var(--sans); color: var(--muted); }
   :root[data-theme='dark'] #preview .m2-math { filter: invert(0.9); }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) #preview .m2-math { filter: invert(0.9); }

@@ -58,4 +58,6 @@ Add `?url=` to the address of this app:
 ```
 
 Paths on this site open straight away. Documents on other `https:` sites ask first. Opening a document never unlocks or fetches anything inside it.
+- [Markdown formatting](markdown.md): every formatting feature, tables included.
 - [Developer features](developer.md): code blocks that know their language, Mermaid diagrams and mathematics.
+- [Web pages and charts](embeds.md): embedded pages and Google Charts, loaded only when you allow them.

@@ -31,6 +31,7 @@ export default defineConfig({
         main: here('./index.html'),
         code: here('./sandbox/code.html'),
         mermaid: here('./sandbox/mermaid.html'),
+        gchart: here('./sandbox/gchart.html'),
       },
     },
   },

@@ -133,3 +133,4 @@ Maths is block-level only. Markdown2 adds no syntax, so there is no inline `$…
 
 - [Document styles](styles.md)
 - [Back to the welcome page](index.md)
+- [Web pages and charts](embeds.md)

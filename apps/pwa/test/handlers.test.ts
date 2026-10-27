@@ -3,12 +3,20 @@ import { fileURLToPath } from 'node:url';
 import { GrantSet } from '@markdown2/core';
 import { describe, expect, it } from 'vitest';
 import { createRegistry } from '../src/decoders.js';
-import { codeFence, createHandlers, monacoLanguage } from '../src/handlers.js';
+import {
+  GCHART_ORIGIN,
+  codeFence,
+  createHandlers,
+  monacoLanguage,
+  pageTarget,
+  remoteNeed,
+} from '../src/handlers.js';
 import { runPipeline } from '../src/pipeline.js';
 
 const handlers = createHandlers();
 const run = (src: string) =>
   runPipeline(src, { registry: createRegistry(), grants: new GrantSet(), handlers, codeFence });
+const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 
 const svgsIn = (html: string): string[] =>
   [...html.matchAll(/data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)/g)].map((m) => atob(m[1] ?? ''));
@@ -70,5 +78,48 @@ describe('developer docs page', () => {
     expect(html).toContain('data-m2-frame="code"');
     expect(html).toContain('data-m2-frame="mermaid"');
     expect(svgsIn(html).length).toBeGreaterThanOrEqual(3);
+  });
+});
+describe('embedded pages', () => {
+  const src = '<<<P type="text/uri-list" title="Map"\n# a comment\nhttps://maps.example/embed?x=1\nP\n';
+  it('stay unloaded until allowed', async () => {
+    const { html } = await run(src);
+    expect(html).toContain('m2-embed-pending');
+    expect(html).not.toContain('<iframe');
+  });
+  it('frame the page once allowed, sandboxed and without top navigation', async () => {
+    const allowed = createHandlers({ remoteAllowed: () => true, appOrigin: 'https://md2.example' });
+    const { html } = await runPipeline(src, { registry: createRegistry(), grants: new GrantSet(), handlers: allowed });
+    expect(html).toContain('src="https://maps.example/embed?x=1"');
+    expect(html).toContain('sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"');
+    expect(html).not.toContain('allow-top-navigation');
+  });
+  it('accept only https pages on other sites', () => {
+    expect(pageTarget(enc('http://x.example/'))).toBeNull();
+    expect(pageTarget(enc('https://md2.example/x'), 'https://md2.example')).toBeNull();
+    expect(pageTarget(enc('https://u:p@x.example/'))).toBeNull();
+    expect(pageTarget(enc('# only a comment\n'))).toBeNull();
+    expect(remoteNeed('text/uri-list', enc('https://x.example/a'))?.origin).toBe('https://x.example');
+  });
+});
+describe('Google Charts', () => {
+  const chart = '{"chartType":"PieChart","data":[["Region","Revenue"],["North",42],["<b>",1]]}';
+  const src = `<<<C type="application/vnd.google.charts+json" title="Revenue"\n${chart}\nC\n`;
+  it('show their data as an escaped table until allowed', async () => {
+    const { html } = await run(src);
+    expect(html).toContain('<table class="m2-chart-data">');
+    expect(html).toContain('&lt;b&gt;');
+    expect(html).not.toContain('data-m2-frame="gchart"');
+  });
+  it('draw in an opaque-origin frame once allowed', async () => {
+    const allowed = createHandlers({ remoteAllowed: (_n, origin) => origin === GCHART_ORIGIN });
+    const { html } = await runPipeline(src, { registry: createRegistry(), grants: new GrantSet(), handlers: allowed });
+    expect(html).toContain('data-m2-frame="gchart"');
+    expect(html).not.toContain('allow-same-origin');
+    expect(remoteNeed('application/vnd.google.charts+json', enc(chart))?.origin).toBe(GCHART_ORIGIN);
+  });
+  it('reject invalid descriptions', async () => {
+    const bad = '<<<C type="application/vnd.google.charts+json"\n{"chartType":"x y","data":[[1]]}\nC\n';
+    expect((await run(bad)).html).toContain('handler-error');
   });
 });

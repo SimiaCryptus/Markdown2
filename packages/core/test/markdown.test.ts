@@ -59,6 +59,19 @@ describe('prose renderer (CommonMark subset)', () => {
     expect(await md('    x <y>\n')).toBe('<pre><code>x &lt;y&gt;</code></pre>');
     expect(await md('```js\nconst a = 1;\n```\n')).toBe('<pre><code class="language-js">const a = 1;</code></pre>');
   });
+  it('tables (GFM)', async () => {
+    expect(await md('| a | b |\n| :- | -: |\n| 1 | `x \\| y` |\n')).toBe(
+      '<table>\n<thead>\n<tr>\n<th align="left">a</th>\n<th align="right">b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td align="left">1</td>\n<td align="right"><code>x | y</code></td>\n</tr>\n</tbody>\n</table>',
+    );
+    expect(await md('p\n| a |\n| --- |\n| *b* |\n')).toBe(
+      '<p>p</p>\n<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><em>b</em></td>\n</tr>\n</tbody>\n</table>',
+    );
+    expect(await md('a | b\n')).toBe('<p>a | b</p>');
+    expect(await md('| a | b |\n| --- |\n')).toBe('<p>| a | b |\n| --- |</p>');
+  });
+  it('strikethrough (GFM)', async () => {
+    expect(await md('~~gone~~ ~one~')).toBe('<p><del>gone</del> ~one~</p>');
+  });
 
   it('stays bounded on pathological input', async () => {
     await expect(md('>'.repeat(5000) + ' x')).resolves.toContain('<blockquote>');

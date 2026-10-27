@@ -2,9 +2,11 @@ import {
   defaultHandlers,
   encodeBase64,
   escapeHtml,
+  typeEssence,
   type CodeFenceRenderer,
   type Handler,
   type HandlerRegistry,
+  type ResourceNode,
 } from '@markdown2/core';
 
 /**
@@ -12,17 +14,25 @@ import {
  *
  * - code: read-only Monaco editor in a sandboxed, opaque-origin frame;
  * - text/vnd.mermaid: Mermaid in a sandboxed frame;
- * - application/x-tex, application/mathml+xml: MathJax to SVG, shown through <img>.
+ * - application/x-tex, application/mathml+xml: MathJax to SVG, shown through <img>;
+ * - text/uri-list: an embedded web page in a sandboxed frame;
+ * - application/vnd.google.charts+json: Google Charts in a sandboxed frame.
  *
  * Frames always carry the escaped source as a fallback, which stays visible
  * until the frame reports that it has drawn (offline, blocked or failed).
+ *
+ * Embedded pages and charts reach the network, so they are drawn only when
+ * `remoteAllowed` says so (§5.5: rendering never grants network access).
  */
 
 const MAX_CODE = 200_000;
 const MAX_DIAGRAM = 50_000;
 const MAX_MATH = 20_000;
+const MAX_CHART_BYTES = 200_000;
+const MAX_CHART_ROWS = 5000;
+const SHOWN_CHART_ROWS = 50;
 
-export type FrameKind = 'code' | 'mermaid';
+export type FrameKind = 'code' | 'mermaid' | 'gchart';
 
 /** Fence info-string names → Monaco language ids (basic languages only). */
 const LANGS: Readonly<Record<string, string>> = {
@@ -157,8 +167,173 @@ export const mathHandler: Handler = {
   },
 };
 
-export function createHandlers(): HandlerRegistry {
+// ------------------------------------------------------------------ remote views
+
+export interface PwaHandlerOptions {
+  /**
+   * Whether a resource may load content from `origin`. Default: never.
+   * The PWA answers from per-resource grants and the user's origin list.
+   */
+  remoteAllowed?: (node: ResourceNode | undefined, origin: string) => boolean;
+  /** The app's own origin. Pages from it are never framed: scripts there could reach the app. */
+  appOrigin?: string;
+}
+
+export const PAGE_TYPE = 'text/uri-list';
+export const GCHART_TYPE = 'application/vnd.google.charts+json';
+export const GCHART_ORIGIN = 'https://www.gstatic.com';
+
+/** Sandbox for embedded pages. No top navigation, so a page can never replace the app. */
+const PAGE_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-presentation';
+
+/** The page an embed points at: the first non-comment line, `https:` only, never the app itself. */
+export function pageTarget(bytes: Uint8Array, appOrigin?: string): URL | null {
+  let text: string;
+  try {
+    text = strictUtf8(bytes);
+  } catch {
+    return null;
+  }
+  const line = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l !== '' && !l.startsWith('#'));
+  if (line === undefined) return null;
+  let u: URL;
+  try {
+    u = new URL(line);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' || u.username !== '' || u.password !== '') return null;
+  if (appOrigin !== undefined && u.origin === appOrigin) return null;
+  return u;
+}
+
+export interface ChartSpec {
+  chartType: string;
+  data: unknown[][];
+  options: Record<string, unknown>;
+}
+
+/** Validate a Google Charts description. Throws on anything unusable. */
+export function parseChart(bytes: Uint8Array): ChartSpec {
+  if (bytes.length > MAX_CHART_BYTES) throw new Error('chart too large');
+  const raw: unknown = JSON.parse(strictUtf8(bytes));
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) throw new Error('a chart is a JSON object');
+  const r = raw as Record<string, unknown>;
+  const chartType = r.chartType;
+  if (typeof chartType !== 'string' || !/^[A-Za-z][A-Za-z0-9]{0,63}$/.test(chartType)) {
+    throw new Error('chartType must be a chart name such as "PieChart"');
+  }
+  const data = r.data;
+  if (!Array.isArray(data) || data.length === 0 || data.length > MAX_CHART_ROWS || !data.every(Array.isArray)) {
+    throw new Error('data must be a non-empty array of rows');
+  }
+  const options = r.options ?? {};
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new Error('options must be an object');
+  }
+  return { chartType, data: data as unknown[][], options: options as Record<string, unknown> };
+}
+
+export interface RemoteNeed {
+  /** Origin the view would contact. */
+  origin: string;
+  /** Human-readable name for prompts. */
+  label: string;
+}
+
+/** What a decoded resource's view needs from the network, if anything. */
+export function remoteNeed(type: string | undefined, bytes: Uint8Array, appOrigin?: string): RemoteNeed | null {
+  const t = typeEssence(type);
+  if (t === PAGE_TYPE) {
+    const u = pageTarget(bytes, appOrigin);
+    return u === null ? null : { origin: u.origin, label: u.host };
+  }
+  if (t === GCHART_TYPE) {
+    try {
+      parseChart(bytes);
+      return { origin: GCHART_ORIGIN, label: 'Google Charts (www.gstatic.com)' };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function pageHandler(o: PwaHandlerOptions): Handler {
+  return {
+    types: [PAGE_TYPE],
+    capabilities: ['view'],
+    render: (bytes, ctx) =>
+      new Promise<string>((resolve) => {
+        const u = pageTarget(bytes, o.appOrigin);
+        if (u === null) throw new Error('not an https: page on another site');
+        const title = ctx.node?.resource.attributes.get('title') ?? u.host;
+        const href = escapeHtml(u.href);
+        if (!(o.remoteAllowed?.(ctx.node, u.origin) ?? false)) {
+          resolve(
+            `<div class="m2-embed m2-embed-pending"><span class="m2-embed-host">🌐 ${escapeHtml(u.host)}</span><span>Embedded page, not loaded. Load it from the Resources panel.</span><a href="${href}" target="_blank" rel="noopener noreferrer nofollow">${href}</a></div>`,
+          );
+          return;
+        }
+        resolve(
+          `<div class="m2-embed"><iframe class="m2-embed-frame" src="${href}" title="${escapeHtml(title)}" sandbox="${PAGE_SANDBOX}" allow="fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer" credentialless loading="lazy"></iframe></div>`,
+        );
+      }),
+  };
+}
+
+function cellText(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    const r = v as Record<string, unknown>;
+    if (typeof r.f === 'string') return r.f;
+    if (typeof r.label === 'string') return r.label;
+    if ('v' in r) return cellText(r.v);
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
+
+/** The chart's data as a plain table: shown until the chart draws, and whenever it cannot. */
+function dataTable(data: readonly unknown[][]): string {
+  const [head = [], ...rows] = data;
+  const row = (r: readonly unknown[], tag: 'th' | 'td'): string =>
+    `<tr>${r.map((c) => `<${tag}>${escapeHtml(cellText(c))}</${tag}>`).join('')}</tr>`;
+  const more =
+    rows.length > SHOWN_CHART_ROWS
+      ? `<tr><td colspan="${Math.max(1, head.length)}">… ${rows.length - SHOWN_CHART_ROWS} more rows</td></tr>`
+      : '';
+  return `<table class="m2-chart-data"><thead>${row(head, 'th')}</thead><tbody>${rows
+    .slice(0, SHOWN_CHART_ROWS)
+    .map((r) => row(r, 'td'))
+    .join('')}${more}</tbody></table>`;
+}
+
+function chartHandler(o: PwaHandlerOptions): Handler {
+  return {
+    types: [GCHART_TYPE],
+    capabilities: ['view'],
+    render: (bytes, ctx) =>
+      new Promise<string>((resolve) => {
+        const spec = parseChart(bytes);
+        const title = ctx.node?.resource.attributes.get('title') ?? spec.chartType;
+        const allowed = o.remoteAllowed?.(ctx.node, GCHART_ORIGIN) ?? false;
+        const note = allowed
+          ? 'Drawing with Google Charts…'
+          : 'Google Chart, not loaded. Its data is shown below; load the chart from the Resources panel.';
+        const frame = allowed ? frameHtml('gchart', JSON.stringify(spec), title) : '';
+        resolve(
+          `<div class="m2-frame-host m2-gchart"><div class="m2-frame-fallback"><p class="m2-chart-note">${escapeHtml(note)}</p>${dataTable(spec.data)}</div>${frame}</div>`,
+        );
+      }),
+  };
+}
+
+export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
   const r = defaultHandlers();
-  for (const h of [codeHandler, mermaidHandler, mathHandler]) r.register(h);
+  for (const h of [codeHandler, mermaidHandler, mathHandler, pageHandler(o), chartHandler(o)]) r.register(h);
   return r;
 }

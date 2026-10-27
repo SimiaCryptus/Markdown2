@@ -10,6 +10,7 @@ import {
   type DecodeState,
   type Diagnostic,
   type ResolvedResource,
+  type ResourceNode,
   type StyleModel,
   type StyleSelection,
 } from '@markdown2/core';
@@ -17,7 +18,7 @@ import { createBrowserUriPolicy, createRegistry, type KeyGrant } from './decoder
 import { DOCS } from './docs.js';
 import { downloadBytes, fromFile, fromHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
 import { installFrameHost } from './frames.js';
-import { codeFence, createHandlers } from './handlers.js';
+import { codeFence, createHandlers, remoteNeed, type RemoteNeed } from './handlers.js';
 import { describeNode, nextGate, runPipeline, type PipelineResult } from './pipeline.js';
 import { docLinkTarget, docNameFor, fetchDocument, resolveDocUrl } from './remote-doc.js';
 import { SAMPLE } from './sample.js';
@@ -66,8 +67,10 @@ const narrow = window.matchMedia('(max-width: 900px)');
 
 // ---------------------------------------------------------------- state
 const registry = createRegistry();
-const handlers = createHandlers();
+const handlers = createHandlers({ remoteAllowed, appOrigin: location.origin });
 let grants = new GrantSet(); // in memory only; cleared on tab close
+/** Per-resource permission to load embedded pages and charts (§5.5). In memory only. */
+let embeds = new GrantSet();
 let origins = loadOrigins();
 const uriPolicy = createBrowserUriPolicy({ origins: () => origins });
 let current: PipelineResult | null = null;
@@ -115,6 +118,11 @@ function loadOrigins(): Set<string> {
     return new Set();
   }
 }
+/** Embedded pages and charts load only with a per-resource grant or a user-allowed origin. */
+function remoteAllowed(node: ResourceNode | undefined, origin: string): boolean {
+  return (node !== undefined && embeds.has(node, 0)) || origins.has(origin);
+}
+
 
 function loadPrefs(): { choices: Map<string, string>; toggles: Map<string, boolean> } {
   const out = { choices: new Map<string, string>(), toggles: new Map<string, boolean>() };
@@ -513,6 +521,14 @@ function renderResourcePanel(r: PipelineResult): void {
 
     const actions = el('div', 'res-actions');
     if (state === 'locked') addButton(actions, 'Unlock…', `Unlock ${label}`, () => void unlock(entry), true);
+    const need =
+      state === 'decoded' && entry.result.bytes !== undefined
+        ? remoteNeed(entry.node.resource.type, entry.result.bytes, location.origin)
+        : null;
+    if (need !== null && !remoteAllowed(entry.node, need.origin)) {
+      meta.append(el('span', 'chip', 'Not loaded'));
+      addButton(actions, 'Load…', `Load ${label} from ${need.label}`, () => void allowRemote(entry, need), true);
+    }
     if (state === 'decoded') addButton(actions, 'Save', `Save ${label}`, () => save(entry, 'decoded'));
     addButton(actions, 'Save raw', `Save raw payload of ${label}`, () => save(entry, 'raw'));
 
@@ -536,6 +552,19 @@ function save(entry: ResolvedResource, form: 'raw' | 'decoded'): void {
   downloadBytes(plan.bytes, name);
   setStatus(`Downloaded ${name}`);
 }
+/** Per-resource permission for a view that reaches the network. Never automatic. */
+async function allowRemote(entry: ResolvedResource, need: RemoteNeed): Promise<void> {
+  const label = describeNode(entry.node);
+  if (
+    !confirm(
+      `Load "${label}" from ${need.label}?\n\n${need.origin} will learn that you opened this document. Its content runs in a sandboxed frame. Only this resource is allowed.`,
+    )
+  )
+    return;
+  embeds.grant(entry.node, 0);
+  await refresh();
+}
+
 
 function askKey(description: string): Promise<KeyGrant | null> {
   const dialog = $<HTMLDialogElement>('unlock');
@@ -683,6 +712,7 @@ function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
    autosave = source.kind !== 'url';
    savedText = source.kind === 'file' || source.kind === 'url' ? doc.text : null;
   grants = new GrantSet(); // keys never carry over to another document
+  embeds = new GrantSet();
   overrides = new Map(); // per-document selections start from defaults and preferences
   docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
    if (source.kind === 'file' || source.kind === 'share') localStorage.setItem(DRAFT_KEY, doc.text);
@@ -737,7 +767,7 @@ async function saveDoc(): Promise<void> {
 
 function editPolicy(): void {
   const answer = prompt(
-    'Origins allowed to serve remote resources (https only, space separated).\nLeave empty to keep every uri resource locked.',
+    'Origins allowed to serve remote resources, embedded pages and charts (https only, space separated).\nFor Google Charts, add https://www.gstatic.com.\nLeave empty to keep everything remote locked.',
     [...origins].join(' '),
   );
   if (answer === null) return;
@@ -895,6 +925,7 @@ $('save-doc').addEventListener('click', () => void saveDoc());
 $('policy').addEventListener('click', editPolicy);
 $('forget').addEventListener('click', () => {
   grants = new GrantSet();
+  embeds = new GrantSet();
   setStatus('Keys forgotten');
   void refresh();
 });
@@ -1013,26 +1044,48 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Drag and drop, with an overlay that says what will happen.
+// Drag and drop, with an overlay that says what will happen. Drags that start
+// inside the app (an image, a link, text in the page) never drop back into it:
+// the browser would otherwise open the dragged image as a document, or navigate
+// a frame to it, with no way back.
 let dragDepth = 0;
+let dragSource: 'outside' | 'editor' | 'app' = 'outside';
 const hasFiles = (e: DragEvent): boolean => e.dataTransfer?.types.includes('Files') ?? false;
+document.addEventListener('dragstart', (e) => {
+  dragSource = e.target === editor ? 'editor' : 'app';
+  document.body.dataset.dragging = ''; // frames ignore the pointer while dragging
+});
+document.addEventListener('dragend', () => {
+  dragSource = 'outside';
+  delete document.body.dataset.dragging;
+});
 document.addEventListener('dragenter', (e) => {
-  if (!hasFiles(e)) return;
+  if (dragSource !== 'outside' || !hasFiles(e)) return;
   dragDepth++;
   dropEl.hidden = false;
 });
 document.addEventListener('dragleave', (e) => {
-  if (!hasFiles(e)) return;
+  if (dragSource !== 'outside' || !hasFiles(e)) return;
   dragDepth = Math.max(0, dragDepth - 1);
   if (dragDepth === 0) dropEl.hidden = true;
 });
 document.addEventListener('dragover', (e) => {
+  if (dragSource === 'app') {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; // no drop target anywhere
+    return;
+  }
+  // Text dragged within or into the editor is ordinary editing.
+  if (dragSource === 'editor' || (e.target === editor && !hasFiles(e))) return;
   e.preventDefault();
 });
 document.addEventListener('drop', (e) => {
+  const fromApp = dragSource !== 'outside';
+  if (e.target === editor && !hasFiles(e) && dragSource !== 'app') return;
   e.preventDefault();
   dragDepth = 0;
   dropEl.hidden = true;
+  if (fromApp) return;
   const f = e.dataTransfer?.files[0];
   if (f) void fromFile(f).then((d) => load(d));
 });

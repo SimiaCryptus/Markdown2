@@ -51,6 +51,14 @@
   - `application/x-tex`, ```` ```math ```` and `application/mathml+xml`: MathJax to SVG, shown through `<img>`.
   - Frames have an opaque origin and show the escaped source until they report that they have drawn.
     Their scripts are CORS requests, so production needs the CloudFront CORS policy in `terraform/`.
+- **Web pages and charts** (`public/docs/embeds.md`)
+  - `text/uri-list`: an `https:` page on another site in a sandboxed frame (no top navigation, no referrer).
+  - `application/vnd.google.charts+json`: Google Charts in an opaque-origin frame (`/sandbox/gchart.html`).
+  - Both reach the network, so neither loads on open. *Load…* in the Resources panel allows one resource;
+    origins in **Remote…** load without asking. Until then a page shows its address and a chart its data table.
+- **Prose**: GFM tables and `~~strikethrough~~`, demonstrated in `public/docs/markdown.md`.
+- **Drag and drop**: drags that start in the app never drop back into it (no accidental navigation into
+  a dragged image). Only files dragged in from outside open documents.
 - **Help and opening by URL**
    - The Help menu opens the built-in documentation in `public/docs/`. Each page is a Markdown2
      document that also demonstrates what it describes.

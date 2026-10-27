@@ -4,9 +4,10 @@ import { escapeHtml } from './html.js';
  * Safe prose renderer: a DOM-free subset of CommonMark (spec-issues #17).
  *
  * Blocks: ATX/setext headings, thematic breaks, fenced and indented code,
- * block quotes (with lazy continuation), bullet and ordered lists.
- * Inlines: emphasis/strong (CommonMark delimiter algorithm), code spans,
- * backslash escapes, entities, inline links, autolinks, images, hard breaks.
+ * block quotes (with lazy continuation), bullet and ordered lists, GFM tables.
+ * Inlines: emphasis/strong (CommonMark delimiter algorithm), GFM
+ * strikethrough (`~~`), code spans, backslash escapes, entities, inline
+ * links, autolinks, images, hard breaks.
  *
  * Security properties:
  * - Raw HTML is never passed through; everything is escaped.
@@ -16,7 +17,7 @@ import { escapeHtml } from './html.js';
  * - Nesting, delimiter counts and link-tail scans are bounded, so hostile
  *   input cannot trigger deep recursion or quadratic work.
  *
- * Not supported (rendered as text): reference links, HTML blocks, GFM tables.
+ * Not supported (rendered as text): reference links, HTML blocks.
  */
 
 export interface MarkdownOptions {
@@ -27,6 +28,7 @@ export interface MarkdownOptions {
 const MAX_NESTING = 32;
 const MAX_DELIMITERS = 2000;
 const MAX_LINK_PARENS = 32;
+const MAX_COLUMNS = 128;
 const SCAN_LIMIT = 4096;
 const REL = 'noopener noreferrer nofollow';
 
@@ -36,7 +38,10 @@ type Block =
   | { t: 'hr' }
   | { t: 'code'; info: string; body: string; fenced: boolean }
   | { t: 'quote'; children: Block[] }
-  | { t: 'list'; ordered: boolean; start: number; tight: boolean; items: Block[][] };
+  | { t: 'list'; ordered: boolean; start: number; tight: boolean; items: Block[][] }
+  | { t: 'table'; align: Align[]; head: string[]; rows: string[][] };
+
+type Align = '' | 'left' | 'center' | 'right';
 
 const BLANK = /^[ \t]*$/;
 const FENCE_OPEN = /^( {0,3})(`{3,}|~{3,})(.*)$/;
@@ -46,6 +51,7 @@ const HR = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 const QUOTE = /^ {0,3}> ?/;
 const ITEM = /^( {0,3})([-+*]|\d{1,9}[.)])(?:( +)(.*))?$/;
 const SETEXT = /^ {0,3}(=+|-+)[ \t]*$/;
+const TABLE_DELIM = /^ {0,3}\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
 
 /** Expand tabs in leading whitespace to 4-column tab stops. */
 function expandTabs(line: string): string {
@@ -120,6 +126,49 @@ function interruptsParagraph(line: string): boolean {
   if (fenceStart(line) !== null || ATX.test(line) || HR.test(line) || QUOTE.test(line)) return true;
   const it = itemStart(line);
   return it !== null && it.content.trim() !== '' && (!it.ordered || it.start === 1);
+}
+/** Split a GFM table row into cells. `\|` is a literal pipe, even inside code spans. */
+function splitRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  const cells: string[] = [];
+  let cur = '';
+  for (let k = 0; k < s.length; k++) {
+    const c = s.charAt(k);
+    if (c === '\\' && s.charAt(k + 1) === '|') {
+      cur += '|';
+      k++;
+      continue;
+    }
+    if (c === '|') {
+      cells.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += c;
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+function alignOf(cell: string): Align {
+  const l = cell.startsWith(':');
+  const r = cell.endsWith(':');
+  return l && r ? 'center' : r ? 'right' : l ? 'left' : '';
+}
+/** A table starts with a header row followed by a delimiter row with the same number of cells. */
+function tableStart(header: string, delim: string): { head: string[]; align: Align[] } | null {
+  if (!header.includes('|') || !delim.includes('|') || leadingSpaces(header) >= 4) return null;
+  if (!TABLE_DELIM.test(delim)) return null;
+  const head = splitRow(header);
+  const align = splitRow(delim).map(alignOf);
+  if (head.length !== align.length || head.length > MAX_COLUMNS) return null;
+  return { head, align };
+}
+function fitRow(cells: readonly string[], n: number): string[] {
+  const out = cells.slice(0, n);
+  while (out.length < n) out.push('');
+  return out;
 }
 
 function nested(lines: readonly string[], depth: number): Block[] {
@@ -290,6 +339,19 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
       i = r.next;
       continue;
     }
+    const table = tableStart(l, line(i + 1));
+    if (table) {
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length) {
+        const r = line(i);
+        if (BLANK.test(r) || interruptsParagraph(r)) break;
+        rows.push(fitRow(splitRow(r), table.head.length));
+        i++;
+      }
+      out.push({ t: 'table', align: table.align, head: table.head, rows });
+      continue;
+    }
 
     const para: string[] = [l.replace(/^[ \t]+/, '')];
     let heading: number | null = null;
@@ -303,6 +365,7 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
         i++;
         break;
       }
+      if (tableStart(n, line(i + 1)) !== null) break;
       if (interruptsParagraph(n)) break;
       para.push(n.replace(/^[ \t]+/, ''));
       i++;
@@ -317,7 +380,7 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
 
 interface DelimTok {
   k: 'delim';
-  ch: '*' | '_';
+  ch: '*' | '_' | '~';
   n: number;
   orig: number;
   open: boolean;
@@ -327,7 +390,7 @@ type Tok = { k: 'text'; s: string } | { k: 'html'; s: string } | DelimTok;
 
 const ESCAPABLE = /[\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e]/;
 const UNESCAPE = /\\([\x21-\x2f\x3a-\x40\x5b-\x60\x7b-\x7e])/g;
-const SPECIAL = /[\\`<&!\x5b*_\n]/g;
+const SPECIAL = /[\\`<&!\x5b*_~\n]/g;
 const AUTOLINK = /<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>/y;
 const EMAIL =
   /<([A-Za-z0-9.!#$%&'*+\x2f=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)>/y;
@@ -531,6 +594,7 @@ function processEmphasis(toks: Tok[]): void {
       const t = toks[o];
       if (t?.k !== 'delim' || t.ch !== closer.ch || !t.open || t.n === 0) continue;
       if (
+        closer.ch !== '~' &&
         (t.close || closer.open) &&
         (t.orig + closer.orig) % 3 === 0 &&
         !(t.orig % 3 === 0 && closer.orig % 3 === 0)
@@ -544,10 +608,11 @@ function processEmphasis(toks: Tok[]): void {
       c++;
       continue;
     }
-    const use = opener.n >= 2 && closer.n >= 2 ? 2 : 1;
+    const tilde = closer.ch === '~';
+    const use = tilde ? 2 : opener.n >= 2 && closer.n >= 2 ? 2 : 1;
     opener.n -= use;
     closer.n -= use;
-    const tag = use === 2 ? 'strong' : 'em';
+    const tag = tilde ? 'del' : use === 2 ? 'strong' : 'em';
     for (let k = o + 1; k < c; k++) {
       const t = toks[k];
       if (t?.k === 'delim') toks[k] = { k: 'text', s: t.ch.repeat(t.n) };
@@ -675,15 +740,21 @@ function renderInline(src: string, depth: number, allowLinks: boolean): string {
       continue;
     }
 
-    if (c === '*' || c === '_') {
+    if (c === '*' || c === '_' || c === '~') {
       const n = runLength(src, i, c);
+      if (c === '~' && n !== 2) {
+        // Only `~~` strikes through.
+        buf += c.repeat(n);
+        i += n;
+        continue;
+      }
       const before = classify(i === 0 ? '' : src.charAt(i - 1));
       const after = classify(src.charAt(i + n));
       const left = after !== 'ws' && (after !== 'punct' || before !== 'other');
       const right = before !== 'ws' && (before !== 'punct' || after !== 'other');
-      const ch = c === '*' ? '*' : '_';
-      const open = ch === '*' ? left : left && (!right || before === 'punct');
-      const close = ch === '*' ? right : right && (!left || after === 'punct');
+      const ch: DelimTok['ch'] = c === '*' ? '*' : c === '_' ? '_' : '~';
+      const open = ch === '_' ? left && (!right || before === 'punct') : left;
+      const close = ch === '_' ? right && (!left || after === 'punct') : right;
       flush();
       toks.push({ k: 'delim', ch, n, orig: n, open, close });
       delims++;
@@ -743,6 +814,15 @@ async function renderBlock(b: Block, fence: FenceFn, tight: boolean): Promise<st
       const items: string[] = [];
       for (const it of b.items) items.push(`<li>${await renderBlocks(it, fence, b.tight)}</li>`);
       return `<${tag}${startAttr}>\n${items.join('\n')}\n</${tag}>`;
+    }
+    case 'table': {
+      const cell = (tag: 'th' | 'td', text: string, a: Align | undefined): string =>
+        `<${tag}${a ? ` align="${a}"` : ''}>${renderInline(text, 0, true)}</${tag}>`;
+      const row = (cells: readonly string[], tag: 'th' | 'td'): string =>
+        `<tr>\n${cells.map((c, k) => cell(tag, c, b.align[k])).join('\n')}\n</tr>`;
+      const head = `<thead>\n${row(b.head, 'th')}\n</thead>`;
+      const body = b.rows.length === 0 ? '' : `\n<tbody>\n${b.rows.map((r) => row(r, 'td')).join('\n')}\n</tbody>`;
+      return `<table>\n${head}${body}\n</table>`;
     }
   }
 }
