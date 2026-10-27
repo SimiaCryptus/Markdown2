@@ -73,13 +73,20 @@ describe('MathJax', () => {
 });
 
 describe('developer docs page', () => {
-   it('demonstrates code, diagrams, maths and 3D scenes', async () => {
+   it('demonstrates code, diagrams, graphs, timing diagrams, maths and 3D scenes', async () => {
     const src = readFileSync(fileURLToPath(new URL('../public/docs/developer.md', import.meta.url)), 'utf8');
     const { html } = await run(src);
     expect(html).toContain('data-m2-frame="code"');
     expect(html).toContain('data-m2-frame="mermaid"');
      expect(html).toContain('data-m2-frame="x3d"');
-    expect(svgsIn(html).length).toBeGreaterThanOrEqual(3);
+    // Graphviz: both fence names and a resource with a non-default engine.
+    expect(html.match(/data-m2-frame="graphviz"/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    expect(html).toContain('data-m2-lang="neato"');
+    // WaveDrom: a timing diagram fence and a register resource, both rendered (no handler-error).
+    expect(html.match(/<img class="m2-wavedrom"/g)?.length ?? 0).toBe(2);
+    expect(html).not.toContain('handler-error');
+    // Maths (4) and WaveDrom (2) are inline SVG images.
+    expect(svgsIn(html).length).toBeGreaterThanOrEqual(6);
   });
 });
 describe('X3D', () => {

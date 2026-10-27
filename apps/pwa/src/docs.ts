@@ -15,7 +15,7 @@ export const DOCS: readonly DocEntry[] = [
   { path: '/docs/resources.md', title: 'Resources and encodings', summary: 'Types, encodings, relationships, nesting' },
   { path: '/docs/trust.md', title: 'Locks, keys and remote resources', summary: 'Nothing unlocks on its own' },
   { path: '/docs/styles.md', title: 'Document styles', summary: 'Themes and toggles a document can offer' },
-   { path: '/docs/developer.md', title: 'Developer features', summary: 'Monaco code, Mermaid, MathJax, X3D scenes' },
+  { path: '/docs/developer.md', title: 'Developer features', summary: 'Code, Mermaid, Graphviz, WaveDrom, maths, X3D' },
   { path: '/docs/embeds.md', title: 'Web pages and charts', summary: 'Embedded pages and Google Charts' },
   { path: '/docs/tables.md', title: 'Data tables', summary: 'CSV and TSV grids: sort, filter, hide, resize' },
   { path: '/docs/community.md', title: 'Join the community', summary: 'Markdown2 on GitHub, and how to help' },
