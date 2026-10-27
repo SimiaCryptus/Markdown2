@@ -8,11 +8,11 @@ resource "aws_cloudfront_origin_access_control" "website" {
 }
 # CloudFront Function to rewrite subdirectory requests to index.html
 resource "aws_cloudfront_function" "rewrite_index" {
- name    = "${replace(var.domain_name, ".", "-")}-rewrite-index"
- runtime = "cloudfront-js-2.0"
- comment = "Append index.html to directory requests"
- publish = true
- code    = <<-EOT
+  name    = "${replace(var.domain_name, ".", "-")}-rewrite-index"
+  runtime = "cloudfront-js-2.0"
+  comment = "Append index.html to directory requests"
+  publish = true
+  code    = <<-EOT
    function handler(event) {
      var request = event.request;
      var uri = request.uri;
@@ -28,25 +28,25 @@ resource "aws_cloudfront_function" "rewrite_index" {
    }
  EOT
 }
-# Sandboxed frames (code editor, diagrams) have an opaque origin, so their
-# module scripts, styles and fonts are CORS requests. Everything here is
-# public and served without credentials.
-resource "aws_cloudfront_response_headers_policy" "website" {
-  name    = "${replace(var.domain_name, ".", "-")}-headers"
-  comment = "CORS for sandboxed frames"
-  cors_config {
-    access_control_allow_credentials = false
-    origin_override                  = true
-    access_control_allow_headers {
-      items = ["*"]
+# Sandboxed frames (code editor, diagrams) have an opaque origin ("null"), so
+# their module scripts, styles and fonts are CORS requests with `Origin: null`.
+# A response headers policy only answers CORS when it matches the request's
+# Origin; this function adds the header to every response unconditionally,
+# cache hits included. Everything here is public and served without
+# credentials, so `*` is safe and grants the frames nothing beyond reading
+# public files.
+resource "aws_cloudfront_function" "cors" {
+  name    = "${replace(var.domain_name, ".", "-")}-cors"
+  runtime = "cloudfront-js-2.0"
+  comment = "Allow opaque-origin sandbox frames to load public assets"
+  publish = true
+  code    = <<-EOT
+    function handler(event) {
+      var response = event.response;
+      response.headers['access-control-allow-origin'] = { value: '*' };
+      return response;
     }
-    access_control_allow_methods {
-      items = ["GET", "HEAD", "OPTIONS"]
-    }
-    access_control_allow_origins {
-      items = ["*"]
-    }
-  }
+  EOT
 }
 
 
@@ -70,11 +70,14 @@ resource "aws_cloudfront_distribution" "website" {
     target_origin_id       = "s3-${aws_s3_bucket.website.id}"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
-    response_headers_policy_id = aws_cloudfront_response_headers_policy.website.id
-   function_association {
-     event_type   = "viewer-request"
-     function_arn = aws_cloudfront_function.rewrite_index.arn
-   }
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.rewrite_index.arn
+    }
+    function_association {
+      event_type   = "viewer-response"
+      function_arn = aws_cloudfront_function.cors.arn
+    }
 
 
     forwarded_values {
@@ -95,12 +98,12 @@ resource "aws_cloudfront_distribution" "website" {
     response_page_path    = "/error.html"
     error_caching_min_ttl = 300
   }
- custom_error_response {
-   error_code            = 403
-   response_code         = 404
-   response_page_path    = "/error.html"
-   error_caching_min_ttl = 300
- }
+  custom_error_response {
+    error_code            = 403
+    response_code         = 404
+    response_page_path    = "/error.html"
+    error_caching_min_ttl = 300
+  }
 
 
   restrictions {

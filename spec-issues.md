@@ -88,4 +88,6 @@ Seeded from plan.md §11; additions below.
      style.md that handlers may draw inside the code element of a fence.
 29. **Opaque-origin handler frames need CORS**: sandboxed frames without `allow-same-origin` load
      their module scripts as CORS requests with `Origin: null`. Deployments must allow this for
-     static assets. Consider a note in the Viewer API companion.
+     static assets. A CORS policy that matches on `Origin` may not answer `null`; the deployment
+     adds `Access-Control-Allow-Origin: *` unconditionally (CloudFront viewer-response function).
+     Consider a note in the Viewer API companion.

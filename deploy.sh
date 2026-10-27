@@ -21,6 +21,13 @@ install() {
   npm install || die "Failed to install apps/pwa"
   popd
 }
+infra() {
+  pushd terraform || die "Failed to enter terraform"
+  terraform init -input=false || die "terraform init failed"
+  terraform apply -input=false -auto-approve || die "terraform apply failed"
+  popd
+}
+
 
 deploy() {
   aws s3 cp --recursive ./apps/pwa/dist/ s3://md2.cognotik.com/
@@ -32,5 +39,5 @@ deploy() {
 
 install
 build
+infra
 deploy
-
