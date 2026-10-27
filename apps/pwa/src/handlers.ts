@@ -3,6 +3,7 @@ import {
   encodeBase64,
   escapeHtml,
   typeEssence,
+  wavedromHandler,
   type CodeFenceRenderer,
   type Handler,
   type HandlerRegistry,
@@ -35,7 +36,7 @@ const MAX_CHART_BYTES = 200_000;
 const MAX_CHART_ROWS = 5000;
 const SHOWN_CHART_ROWS = 50;
 
-export type FrameKind = 'code' | 'mermaid' | 'gchart' | 'x3d' | 'map';
+export type FrameKind = 'code' | 'mermaid' | 'graphviz' | 'gchart' | 'x3d' | 'map';
 
 /** Fence info-string names → Monaco language ids (basic languages only). */
 const LANGS: Readonly<Record<string, string>> = {
@@ -401,9 +402,71 @@ function mapHandler(o: PwaHandlerOptions): Handler {
 }
 
 
+/** Graphviz layout engines; anything else falls back to `dot`. */
+const GRAPHVIZ_ENGINES: ReadonlySet<string> = new Set([
+  'dot',
+  'neato',
+  'fdp',
+  'sfdp',
+  'circo',
+  'twopi',
+  'osage',
+  'patchwork',
+]);
+const MAX_GRAPH = 256 * 1024;
+
+/**
+* Graphviz graphs, drawn by Graphviz (WebAssembly) in an opaque-origin frame
+* (/sandbox/graphviz.html). The `layout` attribute picks the engine; it travels
+* as the frame's language. The SVG is shown through <img> inside the frame.
+*/
+export const graphvizHandler: Handler = {
+  types: ['text/vnd.graphviz'],
+  capabilities: ['view'],
+  render: (bytes, ctx) =>
+    new Promise<string>((resolve) => {
+      // A throw inside the executor rejects: handler-error fallback.
+      const src = strictUtf8(bytes);
+      if (src.length > MAX_GRAPH) throw new Error('graph too large');
+      const layout = ctx.node?.resource.attributes.get('layout');
+      const engine = layout !== undefined && GRAPHVIZ_ENGINES.has(layout) ? layout : 'dot';
+      const title = ctx.node?.resource.attributes.get('title') ?? 'Graphviz graph';
+      resolve(
+        `<div class="m2-frame-host m2-diagram m2-graphviz"><pre class="m2-frame-fallback"><code class="language-dot">${escapeHtml(src)}</code></pre>${frameHtml('graphviz', src, title, engine)}</div>`,
+      );
+    }),
+};
+
+/**
+* MathJax (TeX and MathML) to SVG, in this tab. The SVG is shown through <img>,
+* where nothing in it can run. MathJax loads only when a formula appears.
+*/
+export const mathHandler: Handler = {
+  types: ['application/x-tex', 'application/mathml+xml'],
+  capabilities: ['view'],
+  async render(bytes, ctx) {
+    const src = strictUtf8(bytes);
+    if (src.length > MAX_MATH) throw new Error('formula too large');
+    const { mathToSvg } = await import('./math.js');
+    const svg = mathToSvg(src, ctx.type === 'application/mathml+xml' ? 'mathml' : 'tex');
+    const data = encodeBase64(new TextEncoder().encode(svg));
+    return `<div class="m2-math-block"><img class="m2-math" alt="${escapeHtml(src)}" src="data:image/svg+xml;base64,${data}"></div>`;
+  },
+};
+
 export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
   const r = defaultHandlers();
-  for (const h of [codeHandler, mermaidHandler, x3dHandler, pageHandler(o), chartHandler(o), mapHandler(o)]) {
+  for (const h of [
+    codeHandler,
+    mermaidHandler,
+    graphvizHandler,
+    wavedromHandler,
+    mathHandler,
+    x3dHandler,
+    pageHandler(o),
+    chartHandler(o),
+    mapHandler(o),
+  ]) {
     r.register(h);
   }
   return r;

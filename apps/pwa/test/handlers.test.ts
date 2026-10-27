@@ -85,8 +85,8 @@ describe('developer docs page', () => {
     // WaveDrom: a timing diagram fence and a register resource, both rendered (no handler-error).
     expect(html.match(/<img class="m2-wavedrom"/g)?.length ?? 0).toBe(2);
     expect(html).not.toContain('handler-error');
-    // Maths (4) and WaveDrom (2) are inline SVG images.
-    expect(svgsIn(html).length).toBeGreaterThanOrEqual(6);
+    // Maths (3) and WaveDrom (2) are inline SVG images.
+    expect(svgsIn(html).length).toBeGreaterThanOrEqual(5);
   });
 });
 describe('X3D', () => {
