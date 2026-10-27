@@ -99,3 +99,14 @@ Seeded from plan.md §11; additions below.
 31. **GFM in prose**: tables and `~~strikethrough~~` follow GitHub Flavored Markdown, as style.md §4.1
      anticipates for syntax extensions. The core spec does not name GFM; consider listing it as an
      optional prose profile.
+32. **Delimited data**: `text/csv` follows RFC 4180, including its `header=present|absent` parameter
+      (default present); `text/tab-separated-values` follows the IANA registration (no quoting). Both
+      render as an escaped `table.m2-grid`, limited to 10,000 rows and 256 columns. `csv` and `tsv`
+      fences are compatibility aliases (§7.2). Consider listing both types in Appendix A.2.
+33. **Relative `uri` references in the PWA**: they resolve against the address of a document opened by
+      URL, must stay on that origin, and still need a grant or an allowed origin. A local draft has no
+      base, so relative references fail there. §7.4 suggests relative references for repositories but
+      says nothing about their base; consider stating that the base is the document's own address.
+34. **Grids and the styling tree**: the PWA wraps enhanced tables in `div.m2-grid-scroll` with a toolbar
+      before it, so `md2-section > table` no longer matches them. style.md §4.1 could reserve such a
+      wrapper, or say that reader enhancements may wrap tables.

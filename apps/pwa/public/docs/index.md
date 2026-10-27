@@ -332,5 +332,8 @@ Each page ends with a link to the next, and the last one brings you back here.
 | 5    | [Document styles](styles.md)                   | Themes and switches, and how you stay in charge        |
 | 6    | [Developer features](developer.md)             | Monaco code, Mermaid diagrams, MathJax                 |
 | 7    | [Web pages and charts](embeds.md)              | Embedded pages and Google Charts, on your say-so       |
+| 8    | [Data tables](tables.md)                       | CSV and TSV grids: sort, filter, hide, resize          |
 
 Ready? [Start with using the app →](guide.md)
+## Join the community
+Markdown2 is open source, and it is still a draft: the best time to shape it is now. Star it, try it, report what breaks and propose what is missing on **[GitHub](https://github.com/SimiaCryptus/Markdown2)**. The [community page](community.md) says how to help.

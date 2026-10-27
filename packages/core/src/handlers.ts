@@ -1,6 +1,7 @@
 import { encodeBase64 } from './base64.js';
 import { escapeHtml } from './html.js';
 import { typeEssence } from './runtime.js';
+import { MAX_TABLE_BYTES, buildTable, headerPresent, parseCsv, parseTsv, tableHtml } from './table.js';
 import type { ResourceNode } from './types.js';
 
 export type HandlerCapability = 'view' | 'thumbnail' | 'validate';
@@ -119,9 +120,26 @@ export const imageHandler: Handler = {
     );
   },
 };
+/**
+ * CSV (RFC 4180, honouring `header=absent`) and TSV, rendered as an escaped
+ * `table.m2-grid`. Readers may add sorting and filtering on top.
+ */
+export const tableHandler: Handler = {
+  types: ['text/csv', 'text/tab-separated-values'],
+  capabilities: ['view', 'validate'],
+  render: (bytes, ctx) =>
+    new Promise<string>((resolve) => {
+      // A throw inside the executor rejects: handler-error fallback.
+      if (bytes.length > MAX_TABLE_BYTES) throw new Error('table too large');
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); // a leading BOM is dropped
+      const kind = ctx.type === 'text/tab-separated-values' ? 'tsv' : 'csv';
+      const cells = kind === 'tsv' ? parseTsv(text) : parseCsv(text);
+      resolve(tableHtml(buildTable(cells, headerPresent(ctx.node?.resource.type)), kind));
+    }),
+};
 
 export function defaultHandlers(): HandlerRegistry {
-  return new HandlerRegistry([textHandler, markdownHandler, jsonHandler, yamlHandler, imageHandler]);
+  return new HandlerRegistry([textHandler, markdownHandler, jsonHandler, yamlHandler, imageHandler, tableHandler]);
 }
 
 /**
@@ -133,6 +151,8 @@ export const FENCE_ALIASES: Readonly<Record<string, string>> = {
   mermaid: 'text/vnd.mermaid',
   json: 'application/json',
   math: 'application/x-tex',
+  csv: 'text/csv',
+  tsv: 'text/tab-separated-values',
 };
 
 export function fenceAliasType(info: string): string | undefined {

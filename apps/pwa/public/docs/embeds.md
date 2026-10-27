@@ -86,7 +86,6 @@ Choose *Load from www.gstatic.com…* above a chart's data table to draw it. Pic
 
 ## Next
 
-That is the end of the tour.
 
-- [Back to the welcome page](index.md), the showcase where it all started.
-- [Using the app](guide.md), to go round again.
+- [Back to the welcome page](index.md)
+- Tour stop 8: [Data tables](tables.md), CSV and TSV as sortable, filterable, resizable grids.

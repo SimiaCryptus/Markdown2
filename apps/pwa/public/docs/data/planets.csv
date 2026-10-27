@@ -1,0 +1,9 @@
+Planet,Mean distance from the Sun (AU),Diameter (km),Mass (Earth = 1),Known moons,Orbital period (years),Type
+Mercury,0.39,4879,0.055,0,0.24,Terrestrial
+Venus,0.72,12104,0.815,0,0.62,Terrestrial
+Earth,1.00,12756,1.000,1,1.00,Terrestrial
+Mars,1.52,6792,0.107,2,1.88,Terrestrial
+Jupiter,5.20,142984,317.8,95,11.86,Gas giant
+Saturn,9.58,120536,95.2,146,29.46,Gas giant
+Uranus,19.22,51118,14.5,28,84.01,Ice giant
+Neptune,30.05,49528,17.1,16,164.8,Ice giant

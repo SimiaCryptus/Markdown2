@@ -51,18 +51,39 @@ export type FetchLike = (url: URL, init: RequestInit) => Promise<Response>;
 export interface BrowserUriPolicyOptions {
   /** User-configured origins allowed without a per-resource grant. */
   origins: () => ReadonlySet<string>;
+  /**
+   * Address of the open document, when it has one (opened by URL). Relative
+   * references resolve against it and must stay on its origin (spec-issues #33).
+   */
+  base?: () => URL | null;
   fetch?: FetchLike;
   /** Response body cap, enforced while streaming. Default 16 MiB. */
   maxBytes?: number;
 }
 
-function parseHttps(uri: string): URL | null {
+/**
+ * The address a `uri` payload points at, or null if it may not be fetched.
+ *
+ * - Absolute `https:` URIs without credentials are allowed.
+ * - Relative references resolve against `base` only, and only to its own origin.
+ * - Plain `http:` is allowed only on the base's own origin (local development).
+ */
+export function resolveRemoteUri(uri: string, base: URL | null): URL | null {
+  let u: URL;
   try {
-    const u = new URL(uri);
-    return u.protocol === 'https:' && u.username === '' && u.password === '' ? u : null;
+    u = new URL(uri);
   } catch {
-    return null; // relative references have no trusted base in the PWA
+    if (base === null) return null; // relative references need a trusted base
+    try {
+      u = new URL(uri, base);
+    } catch {
+      return null;
+    }
+    if (u.origin !== base.origin) return null;
   }
+  if (u.username !== '' || u.password !== '') return null;
+  if (u.protocol === 'https:') return u;
+  return u.protocol === 'http:' && base !== null && u.origin === base.origin ? u : null;
 }
 
 /**
@@ -73,14 +94,15 @@ function parseHttps(uri: string): URL | null {
 export function createBrowserUriPolicy(opts: BrowserUriPolicyOptions): UriPolicy {
   const doFetch: FetchLike = opts.fetch ?? ((url, init) => fetch(url, init));
   const maxBytes = opts.maxBytes ?? 16 * 1024 * 1024;
+  const target = (uri: string): URL | null => resolveRemoteUri(uri, opts.base?.() ?? null);
   return {
     allows(uri) {
-      const u = parseHttps(uri);
+      const u = target(uri);
       return u !== null && opts.origins().has(u.origin);
     },
     async resolve(uri, signal) {
-      const u = parseHttps(uri);
-      if (u === null) throw new DecodeError('only absolute https: URIs can be fetched');
+      const u = target(uri);
+      if (u === null) throw new DecodeError('only https: URIs, or references relative to this document, can be fetched');
       const res = await doFetch(u, {
         credentials: 'omit',
         referrerPolicy: 'no-referrer',

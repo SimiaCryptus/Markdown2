@@ -46,6 +46,7 @@ const PASSIVE_TYPE_EXTENSIONS: Readonly<Record<string, string>> = {
   'text/plain': 'txt',
   'text/markdown': 'md',
   'text/csv': 'csv',
+  'text/tab-separated-values': 'tsv',
   'application/json': 'json',
   'application/yaml': 'yaml',
   'application/pdf': 'pdf',

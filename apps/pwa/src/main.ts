@@ -15,10 +15,11 @@ import {
   type StyleSelection,
   type StyleGroup,
 } from '@markdown2/core';
-import { createBrowserUriPolicy, createRegistry, type KeyGrant } from './decoders.js';
-import { DOCS } from './docs.js';
+import { createBrowserUriPolicy, createRegistry, resolveRemoteUri, type KeyGrant } from './decoders.js';
+import { DOCS, REPO } from './docs.js';
 import { downloadBytes, fromFile, fromHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
 import { installFrameHost } from './frames.js';
+import { enhanceTables, resetGridState } from './grid.js';
 import { codeFence, createHandlers, remoteNeed, type RemoteNeed } from './handlers.js';
 import { describeNode, gatedStages, nextGate, runPipeline, type PipelineResult } from './pipeline.js';
 import { docLinkTarget, docNameFor, fetchDocument, resolveDocUrl } from './remote-doc.js';
@@ -73,7 +74,8 @@ let grants = new GrantSet(); // in memory only; cleared on tab close
 /** Per-resource permission to load embedded pages and charts (§5.5). In memory only. */
 let embeds = new GrantSet();
 let origins = loadOrigins();
-const uriPolicy = createBrowserUriPolicy({ origins: () => origins });
+// Relative `uri` references resolve against the address of a document opened by URL.
+const uriPolicy = createBrowserUriPolicy({ origins: () => origins, base: () => docUrl });
 let current: PipelineResult | null = null;
 let controller: AbortController | null = null;
 let seq = 0;
@@ -129,13 +131,9 @@ function allowOrigin(origin: string): void {
   localStorage.setItem(ORIGINS_KEY, JSON.stringify([...origins]));
   setStatus(`Always allowing ${new URL(origin).host}. Manage the list with Remote…`);
 }
-function httpsUrl(raw: string): URL | null {
-  try {
-    const u = new URL(raw);
-    return u.protocol === 'https:' && u.username === '' && u.password === '' ? u : null;
-  } catch {
-    return null;
-  }
+/** Open a link outside the app, never in place of it. */
+function openExternal(url: string): void {
+   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 
@@ -305,6 +303,7 @@ async function refresh(): Promise<void> {
     if (mine !== seq) return; // a newer run superseded this one
     current = r;
     preview.innerHTML = r.html; // renderHtml escapes everything it emits
+     enhanceTables(preview);
     applyStyles();
     renderStylePanel(r.styles);
     renderResourcePanel(r);
@@ -746,7 +745,7 @@ async function unlock(entry: ResolvedResource): Promise<void> {
 
   if (gate.decoder.id === 'uri') {
     const uri = new TextDecoder().decode(node.resource.payload).trim();
-    const u = httpsUrl(uri);
+     const u = resolveRemoteUri(uri, docUrl);
     const choice = await askRemote(
       label,
       u?.host ?? uri,
@@ -806,7 +805,7 @@ function inlineActions(entry: ResolvedResource): InlineAction[] {
   if (result.state === 'locked') {
     const gate = gatedStages(node, registry, grants)[0];
     if (gate?.decoder.id === 'uri') {
-      const host = httpsUrl(new TextDecoder().decode(node.resource.payload).trim())?.host ?? 'the web';
+       const host = resolveRemoteUri(new TextDecoder().decode(node.resource.payload).trim(), docUrl)?.host ?? 'the web';
       return [{ text: `Load from ${host}…`, label: `Load ${label} from ${host}`, run: () => void unlock(entry) }];
     }
     return [{ text: '🔒 Unlock…', label: `Unlock ${label}`, run: () => void unlock(entry) }];
@@ -912,6 +911,7 @@ function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
   grants = new GrantSet(); // keys never carry over to another document
   embeds = new GrantSet();
   overrides = new Map(); // per-document selections start from defaults and preferences
+   resetGridState(); // sort, filter and sizes belong to the previous document
   docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
    if (source.kind === 'file' || source.kind === 'share') localStorage.setItem(DRAFT_KEY, doc.text);
    if (source.kind !== 'url' && new URLSearchParams(location.search).has('url')) {
@@ -1090,6 +1090,18 @@ function buildHelpMenu(): void {
    }
    helpMenu.append(menuItem('Open a URL…', 'A path on this site or an https: address', promptUrl));
    helpMenu.append(menuItem('Keyboard shortcuts', 'Press ? at any time', openKeys));
+    const sep2 = el('div', 'menu-sep');
+    sep2.setAttribute('role', 'separator');
+    helpMenu.append(
+      sep2,
+      el('div', 'menu-head', 'Community'),
+      menuItem('Markdown2 on GitHub', 'Star the project, read the code, join in', () => {
+        openExternal(REPO);
+      }),
+      menuItem('Report an issue or idea', 'Opens a new issue on GitHub', () => {
+        openExternal(`${REPO}/issues/new/choose`);
+      }),
+    );
 }
 function openHelpMenu(): void {
    buildHelpMenu();
@@ -1298,7 +1310,20 @@ preview.addEventListener('click', (e) => {
    const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
    if (!(a instanceof HTMLAnchorElement)) return;
    const target = docLinkTarget(a.getAttribute('href') ?? '', docUrl, location.href);
-   if (target === null) return;
+    if (target === null) {
+      // Links to other sites open in a new tab, so the app and its draft stay put.
+      let u: URL | null = null;
+      try {
+        u = new URL(a.getAttribute('href') ?? '', docUrl ?? location.href);
+      } catch {
+        u = null;
+      }
+      if (u && (u.protocol === 'https:' || u.protocol === 'http:') && u.origin !== location.origin) {
+        e.preventDefault();
+        openExternal(u.href);
+      }
+      return;
+    }
    e.preventDefault();
    navigateTo(target);
 });

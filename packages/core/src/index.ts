@@ -14,3 +14,4 @@ export * from './handlers.js';
 export * from './markdown.js';
 export * from './render.js';
 export * from './style.js';
+export * from './table.js';
