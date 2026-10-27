@@ -88,10 +88,6 @@ function frameHtml(kind: string, src: string, title: string, engine?: string): s
   const engineAttr = engine === undefined ? '' : ` data-m2-engine="${escapeHtml(engine)}"`;
   return `<iframe class="m2-frame" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/sandbox/${escapeHtml(kind)}.html" title="${escapeHtml(title)}" data-m2-frame="${escapeHtml(kind)}" data-m2-source="${escapeHtml(src)}"${engineAttr}></iframe>`;
 }
-/** Shape of the lazily loaded WaveDrom module. */
-interface WavedromModule {
-  waveToSvg(src: string): string;
-}
 
 export const textHandler: Handler = {
   types: ['text/plain'],
@@ -184,7 +180,7 @@ export const wavedromHandler: Handler = {
     const src = strictUtf8(bytes);
     if (src.length > MAX_WAVE) throw new Error('diagram too large');
     // lazy: only when a diagram appears
-    const { waveToSvg } = (await import('./wavedrom.js')) as WavedromModule;
+    const { waveToSvg } = await import('./wavedrom.js');
     const svg = waveToSvg(src);
     const data = encodeBase64(new TextEncoder().encode(svg));
     const title = ctx.node?.resource.attributes.get('title') ?? 'WaveDrom diagram';

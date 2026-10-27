@@ -10,8 +10,7 @@ import {
 } from '@markdown2/core';
 import { basemapFor, parseGeoJson, type GeoSummary } from './geo.js';
 
-/**
- * Developer handlers for the PWA:
+ /* Developer handlers for the PWA:
  *
  * - code: read-only Monaco editor in a sandboxed, opaque-origin frame;
  * - text/vnd.mermaid: Mermaid in a sandboxed frame;
@@ -158,22 +157,9 @@ export const mermaidHandler: Handler = {
     }),
 };
 
-export const mathHandler: Handler = {
-  types: ['application/x-tex', 'application/mathml+xml'],
-  capabilities: ['view'],
-  async render(bytes, ctx) {
-    const src = strictUtf8(bytes);
-    if (src.length > MAX_MATH) throw new Error('formula too large');
-    const { mathToSvg } = await import('./math.js'); // lazy: MathJax is large
-    const svg = mathToSvg(src, ctx.type === 'application/mathml+xml' ? 'mathml' : 'tex');
-    const data = encodeBase64(new TextEncoder().encode(svg));
-    return `<div class="m2-math-block"><img class="m2-math" alt="${escapeHtml(src)}" src="data:image/svg+xml;base64,${data}"></div>`;
-  },
-};
-/** Registered X3D media types (XML and classic VRML encodings) and VRML97. */
+
 export const X3D_TYPES: readonly string[] = ['model/x3d+xml', 'model/x3d-vrml', 'model/vrml'];
-/**
-  * X3D scenes, drawn by X_ITE in an opaque-origin frame (/sandbox/x3d.html).
+  /* X3D scenes, drawn by X_ITE in an opaque-origin frame (/sandbox/x3d.html).
   * The frame fetches nothing from the web; external references only work as
   * data: URLs. The escaped source stays visible until the scene has drawn.
   */
@@ -417,7 +403,7 @@ function mapHandler(o: PwaHandlerOptions): Handler {
 
 export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
   const r = defaultHandlers();
-  for (const h of [codeHandler, mermaidHandler, mathHandler, x3dHandler, pageHandler(o), chartHandler(o), mapHandler(o)]) {
+  for (const h of [codeHandler, mermaidHandler, x3dHandler, pageHandler(o), chartHandler(o), mapHandler(o)]) {
     r.register(h);
   }
   return r;
