@@ -143,5 +143,5 @@ HIDDEN
 
 ## Next
 
-- [Locks, keys and remote resources](trust.md)
 - [Back to the welcome page](index.md)
+- Tour stop 4: [Locks, keys and remote resources](trust.md), why nothing unlocks or fetches on its own.

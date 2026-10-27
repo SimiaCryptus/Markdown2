@@ -77,3 +77,8 @@
 - Trusted Types: the preview currently uses `innerHTML` on escaped output.
 - Trusting relative references within a project.
 - Browsers without `@scope` ignore document stylesheets entirely (fails safe).
+  - Inline buttons sit on each locked card and unloaded embed (*Load from host…*, *Unlock…*). They live
+    in closed shadow roots and only open the chrome dialog, which offers *Load this one* or
+    *Always allow host* (added to the Remote… list, so that site never asks again).
+- **Inline style controls**: each style group shows a checkbox (one member) or dropdown (several)
+  where its first stylesheet sits in the document, synced with the Styles panel.

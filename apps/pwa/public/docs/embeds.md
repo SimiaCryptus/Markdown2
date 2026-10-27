@@ -19,7 +19,7 @@ A `text/uri-list` resource holds one `https:` address. Blank lines and lines sta
 https://www.openstreetmap.org/export/embed.html?bbox=-0.0106%2C51.4747%2C0.0057%2C51.4813&layer=mapnik
 MAP
 
-Open the **Resources** tab in the inspector and choose *Load…* beside the map. You are told which site will be contacted, and only this one resource is allowed. To stop being asked about a site, add its origin with **Remote…** in the toolbar.
+Choose *Load from www.openstreetmap.org…* right under the address, or *Load…* in the **Resources** tab. You are told which site will be contacted. *Load this one* allows only this resource; *Always allow* adds the site to your list, so its pages load without asking from then on. **Remote…** in the toolbar shows and edits that list.
 
 The source is short:
 
@@ -75,7 +75,7 @@ REVENUE
 }
 GROWTH
 
-Choose *Load…* in the Resources tab to draw a chart. Allowing `https://www.gstatic.com` with **Remote…** draws every chart without asking.
+Choose *Load from www.gstatic.com…* above a chart's data table to draw it. Pick *Always allow* once and every chart draws without asking.
 
 - Google's library is loaded from `www.gstatic.com` into a sandboxed frame with an opaque origin. It cannot reach this app.
 - Your data stays in this tab: the frame receives it from the app, never from the network. Some chart types, such as `GeoChart` with place names, ask Google to look locations up.
@@ -86,5 +86,7 @@ Choose *Load…* in the Resources tab to draw a chart. Allowing `https://www.gst
 
 ## Next
 
-- [Developer features](developer.md)
-- [Back to the welcome page](index.md)
+That is the end of the tour.
+
+- [Back to the welcome page](index.md), the showcase where it all started.
+- [Using the app](guide.md), to go round again.

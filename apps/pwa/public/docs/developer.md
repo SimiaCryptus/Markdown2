@@ -131,6 +131,5 @@ Maths is block-level only. Markdown2 adds no syntax, so there is no inline `$…
 
 ## Next
 
-- [Document styles](styles.md)
 - [Back to the welcome page](index.md)
-- [Web pages and charts](embeds.md)
+- Tour stop 7: [Web pages and charts](embeds.md), embedded pages and Google Charts, loaded only when you allow them.

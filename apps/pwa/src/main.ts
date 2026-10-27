@@ -13,13 +13,14 @@ import {
   type ResourceNode,
   type StyleModel,
   type StyleSelection,
+  type StyleGroup,
 } from '@markdown2/core';
 import { createBrowserUriPolicy, createRegistry, type KeyGrant } from './decoders.js';
 import { DOCS } from './docs.js';
 import { downloadBytes, fromFile, fromHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
 import { installFrameHost } from './frames.js';
 import { codeFence, createHandlers, remoteNeed, type RemoteNeed } from './handlers.js';
-import { describeNode, nextGate, runPipeline, type PipelineResult } from './pipeline.js';
+import { describeNode, gatedStages, nextGate, runPipeline, type PipelineResult } from './pipeline.js';
 import { docLinkTarget, docNameFor, fetchDocument, resolveDocUrl } from './remote-doc.js';
 import { SAMPLE } from './sample.js';
 import { planSave } from './save-plan.js';
@@ -121,6 +122,20 @@ function loadOrigins(): Set<string> {
 /** Embedded pages and charts load only with a per-resource grant or a user-allowed origin. */
 function remoteAllowed(node: ResourceNode | undefined, origin: string): boolean {
   return (node !== undefined && embeds.has(node, 0)) || origins.has(origin);
+}
+/** "Always allow this site": adds the origin to the user's list, which Remote… edits. */
+function allowOrigin(origin: string): void {
+  origins = new Set([...origins, origin]);
+  localStorage.setItem(ORIGINS_KEY, JSON.stringify([...origins]));
+  setStatus(`Always allowing ${new URL(origin).host}. Manage the list with Remote…`);
+}
+function httpsUrl(raw: string): URL | null {
+  try {
+    const u = new URL(raw);
+    return u.protocol === 'https:' && u.username === '' && u.password === '' ? u : null;
+  } catch {
+    return null;
+  }
 }
 
 
@@ -293,6 +308,7 @@ async function refresh(): Promise<void> {
     applyStyles();
     renderStylePanel(r.styles);
     renderResourcePanel(r);
+    decoratePreview(r);
     showDiagnostics(r.diagnostics);
   } catch (e) {
     if (mine === seq) setStatus(`Render failed: ${e instanceof Error ? e.message : String(e)}`, true);
@@ -347,7 +363,10 @@ function applyStyles(): void {
 function toggleUnstyled(): void {
   docStyles = !docStyles;
   applyStyles();
-  if (current) renderStylePanel(current.styles);
+  if (current) {
+    renderStylePanel(current.styles);
+    renderInlineStyles(current.styles);
+  }
   setStatus(docStyles ? 'Document styles on' : 'Unstyled view');
 }
 
@@ -373,6 +392,7 @@ function renderStylePanel(model: StyleModel): void {
     checkboxRow('Use document styles', docStyles, (on) => {
       docStyles = on;
       applyStyles();
+      if (current) renderInlineStyles(current.styles);
     }),
     checkboxRow('Off by default for every document', localStorage.getItem(DOC_STYLES_KEY) === 'off', (on) => {
       localStorage.setItem(DOC_STYLES_KEY, on ? 'off' : 'on');
@@ -389,10 +409,7 @@ function renderStylePanel(model: StyleModel): void {
       const unavailable = g.members[0]?.css === null ? ' (unavailable)' : '';
       panel.append(
         checkboxRow(`${prefix}${g.name}${unavailable}`, sel.get(g.key) === true, (on) => {
-          overrides.set(g.key, on);
-          prefs.toggles.set(g.name, on);
-          savePrefs();
-          applyStyles();
+          setToggle(g, on, 'panel');
         }),
       );
       continue;
@@ -407,15 +424,115 @@ function renderStylePanel(model: StyleModel): void {
       select.append(o);
     }
     select.addEventListener('change', () => {
-      overrides.set(g.key, select.value);
-      const m = g.members.find((x) => x.id === select.value);
-      if (m?.title !== undefined) prefs.choices.set(g.name, m.title);
-      savePrefs();
-      applyStyles();
+      setChoice(g, select.value, 'panel');
     });
     label.append(select);
     panel.append(label);
   }
+}
+// ---------------------------------------------------------------- inline controls in the page
+/**
+* Inline controls sit next to the resource or stylesheet they act on. They
+* live in closed shadow roots, so document styles can hide or move the host
+* but cannot relabel or restyle its contents. They never grant anything
+* themselves: every grant still goes through a dialog in reader chrome
+* (style.md §8.3), and the inspector panels remain the authoritative view.
+*/
+const inlineSheet = new CSSStyleSheet();
+inlineSheet.replaceSync(`
+:host { all: initial; display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.6rem;
+  font: 600 0.78rem/1.25 var(--sans, system-ui, sans-serif); color: var(--paper-ink, #25222c); }
+:host([kind='actions']) { margin-top: 0.65rem; }
+:host([kind='style']) { width: fit-content; max-width: 100%; box-sizing: border-box; margin: 0 0 1rem;
+  padding: 0.4rem 0.7rem; border: 1px solid var(--rule, #e0d7c7); border-radius: 10px;
+  background: var(--surface, #fbf8f2); font-weight: 500; }
+button { font: inherit; font-weight: 600; padding: 0.45rem 0.85rem; border-radius: 7px;
+  border: 1px solid var(--teal, #0f6b5f); background: var(--teal, #0f6b5f); color: var(--on-teal, #fff); cursor: pointer; }
+button:hover { filter: brightness(1.08); }
+.k { font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted, #706979); font-weight: 600; }
+label { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+input { accent-color: var(--teal, #0f6b5f); width: 1rem; height: 1rem; margin: 0; }
+select { font: inherit; padding: 0.3rem 0.45rem; border-radius: 7px; border: 1px solid var(--rule-strong, #cbbfa9);
+  background: var(--paper, #fff); color: inherit; }
+:is(button, input, select):focus-visible { outline: 2px solid var(--gold, #b0802a); outline-offset: 2px; }
+@media print { :host { display: none; } }
+`);
+function shadowHost(tag: string, kind: 'actions' | 'style'): [HTMLElement, ShadowRoot] {
+  const host = document.createElement(tag);
+  host.setAttribute('kind', kind);
+  const root = host.attachShadow({ mode: 'closed' });
+  root.adoptedStyleSheets = [inlineSheet];
+  return [host, root];
+}
+type StyleSource = 'panel' | 'inline';
+let inlineStyleSync: (() => void)[] = [];
+function setToggle(g: StyleGroup, on: boolean, from: StyleSource): void {
+  overrides.set(g.key, on);
+  prefs.toggles.set(g.name, on);
+  savePrefs();
+  styleChanged(from);
+}
+function setChoice(g: StyleGroup, id: string, from: StyleSource): void {
+  overrides.set(g.key, id);
+  const m = g.members.find((x) => x.id === id);
+  if (m?.title !== undefined) prefs.choices.set(g.name, m.title);
+  savePrefs();
+  styleChanged(from);
+}
+/** Apply, then bring the other set of controls up to date without stealing focus. */
+function styleChanged(from: StyleSource): void {
+  applyStyles();
+  if (from === 'inline' && current) renderStylePanel(current.styles);
+  for (const sync of inlineStyleSync) sync();
+}
+/** One control per group, placed where the group's first stylesheet sits in its document. */
+function renderInlineStyles(model: StyleModel): void {
+  for (const e of preview.querySelectorAll('m2-style-control')) e.remove();
+  inlineStyleSync = [];
+  if (!docStyles) return; // the controls would do nothing
+  for (const g of model.groups) {
+    const first = g.members[0];
+    if (!first) continue;
+    document.getElementById(`m2-${first.id}`)?.before(styleControl(model, g));
+  }
+}
+function styleControl(model: StyleModel, g: StyleGroup): HTMLElement {
+  const [host, root] = shadowHost('m2-style-control', 'style');
+  const label = el('label');
+  const name = el('span', undefined, g.name);
+  if (g.kind === 'toggle') {
+    const box = el('input');
+    box.type = 'checkbox';
+    box.disabled = g.members[0]?.css === null;
+    const sync = (): void => {
+      box.checked = currentSelection(model).get(g.key) === true;
+    };
+    sync();
+    inlineStyleSync.push(sync);
+    box.addEventListener('change', () => {
+      setToggle(g, box.checked, 'inline');
+    });
+    label.append(box, name);
+  } else {
+    const select = el('select');
+    for (const m of g.members) {
+      const o = el('option', undefined, `${m.title ?? `(untitled ${m.id})`}${m.css === null ? ' (unavailable)' : ''}`);
+      o.value = m.id;
+      select.append(o);
+    }
+    const sync = (): void => {
+      const v = currentSelection(model).get(g.key);
+      if (typeof v === 'string') select.value = v;
+    };
+    sync();
+    inlineStyleSync.push(sync);
+    select.addEventListener('change', () => {
+      setChoice(g, select.value, 'inline');
+    });
+    label.append(name, select);
+  }
+  root.append(el('span', 'k', 'Style'), label);
+  return host;
 }
 
 function editUserStyles(): void {
@@ -552,17 +669,43 @@ function save(entry: ResolvedResource, form: 'raw' | 'decoded'): void {
   downloadBytes(plan.bytes, name);
   setStatus(`Downloaded ${name}`);
 }
-/** Per-resource permission for a view that reaches the network. Never automatic. */
+/** Permission for a view that reaches the network: this resource once, or the whole site from now on. */
 async function allowRemote(entry: ResolvedResource, need: RemoteNeed): Promise<void> {
   const label = describeNode(entry.node);
-  if (
-    !confirm(
-      `Load "${label}" from ${need.label}?\n\n${need.origin} will learn that you opened this document. Its content runs in a sandboxed frame. Only this resource is allowed.`,
-    )
-  )
-    return;
-  embeds.grant(entry.node, 0);
+  const choice = await askRemote(
+    label,
+    need.label,
+    new URL(need.origin).host,
+    'Its content runs in a sandboxed frame and cannot reach this app.',
+  );
+  if (choice === null) return;
+  if (choice === 'always') allowOrigin(need.origin);
+  else embeds.grant(entry.node, 0);
   await refresh();
+}
+
+type RemoteChoice = 'once' | 'always';
+
+/** One dialog, in reader chrome, for every remote load. `alwaysHost` null hides "always allow". */
+function askRemote(label: string, where: string, alwaysHost: string | null, detail: string): Promise<RemoteChoice | null> {
+  const dialog = $<HTMLDialogElement>('remote');
+  $('remote-title').textContent = `Load from ${where}?`;
+  $('remote-desc').textContent = `“${label}” wants to load content from ${where}. That site will learn that you opened this document. ${detail}`;
+  const always = $<HTMLButtonElement>('remote-always');
+  always.hidden = alwaysHost === null;
+  always.textContent = alwaysHost === null ? 'Always allow this site' : `Always allow ${alwaysHost}`;
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      'close',
+      () => {
+        const v = dialog.returnValue;
+        resolve(v === 'once' ? 'once' : v === 'always' && alwaysHost !== null ? 'always' : null);
+      },
+      { once: true },
+    );
+    dialog.returnValue = '';
+    dialog.showModal();
+  });
 }
 
 
@@ -603,8 +746,16 @@ async function unlock(entry: ResolvedResource): Promise<void> {
 
   if (gate.decoder.id === 'uri') {
     const uri = new TextDecoder().decode(node.resource.payload).trim();
-    if (!confirm(`Fetch "${label}" from\n${uri}\n\nThe server will learn that you opened this document. Only this resource is allowed.`)) return;
-    grants.grant(node, gate.stage);
+    const u = httpsUrl(uri);
+    const choice = await askRemote(
+      label,
+      u?.host ?? uri,
+      u === null ? null : u.host,
+      'Whatever it sends is treated as the declared type, nothing else.',
+    );
+    if (choice === null) return;
+    if (choice === 'always' && u !== null) allowOrigin(u.origin);
+    else grants.grant(node, gate.stage);
     await refresh();
     return;
   }
@@ -642,6 +793,53 @@ async function offerBatch(exceptId: string, decoderId: string, key: KeyGrant): P
     return;
   applyBatchGrant(grants, scope, key);
   await refresh();
+}
+interface InlineAction {
+  text: string;
+  label: string;
+  run: () => void;
+}
+/** What a resource's inline button should offer, if anything. */
+function inlineActions(entry: ResolvedResource): InlineAction[] {
+  const { node, result } = entry;
+  const label = describeNode(node);
+  if (result.state === 'locked') {
+    const gate = gatedStages(node, registry, grants)[0];
+    if (gate?.decoder.id === 'uri') {
+      const host = httpsUrl(new TextDecoder().decode(node.resource.payload).trim())?.host ?? 'the web';
+      return [{ text: `Load from ${host}…`, label: `Load ${label} from ${host}`, run: () => void unlock(entry) }];
+    }
+    return [{ text: '🔒 Unlock…', label: `Unlock ${label}`, run: () => void unlock(entry) }];
+  }
+  if (result.state === 'decoded' && result.bytes !== undefined) {
+    const need = remoteNeed(node.resource.type, result.bytes, location.origin);
+    if (need !== null && !remoteAllowed(node, need.origin)) {
+      const host = new URL(need.origin).host;
+      return [{ text: `Load from ${host}…`, label: `Load ${label} from ${need.label}`, run: () => void allowRemote(entry, need) }];
+    }
+  }
+  return [];
+}
+/** Put load/unlock buttons next to each resource, and style controls next to their stylesheets. */
+function decoratePreview(r: PipelineResult): void {
+  for (const entry of r.resources.values()) {
+    const actions = inlineActions(entry);
+    if (actions.length === 0) continue;
+    const res = document.getElementById(`m2-${entry.node.id}`);
+    if (!res || res.dataset.m2Shown !== undefined) continue;
+    const slot = res.querySelector(':scope > md2-view .m2-load-slot') ?? res.querySelector(':scope > md2-fallback');
+    if (!slot) continue;
+    const [host, root] = shadowHost('m2-actions', 'actions');
+    for (const a of actions) {
+      const b = el('button', undefined, a.text);
+      b.type = 'button';
+      b.setAttribute('aria-label', a.label);
+      b.addEventListener('click', a.run);
+      root.append(b);
+    }
+    slot.append(host);
+  }
+  renderInlineStyles(r.styles);
 }
 
 // ---------------------------------------------------------------- diagnostics

@@ -274,7 +274,7 @@ function pageHandler(o: PwaHandlerOptions): Handler {
         const href = escapeHtml(u.href);
         if (!(o.remoteAllowed?.(ctx.node, u.origin) ?? false)) {
           resolve(
-            `<div class="m2-embed m2-embed-pending"><span class="m2-embed-host">🌐 ${escapeHtml(u.host)}</span><span>Embedded page, not loaded. Load it from the Resources panel.</span><a href="${href}" target="_blank" rel="noopener noreferrer nofollow">${href}</a></div>`,
+            `<div class="m2-embed m2-embed-pending"><span class="m2-embed-host">🌐 ${escapeHtml(u.host)}</span><span>Embedded page, not loaded.</span><a href="${href}" target="_blank" rel="noopener noreferrer nofollow">${href}</a><span class="m2-load-slot"></span></div>`,
           );
           return;
         }
@@ -323,10 +323,11 @@ function chartHandler(o: PwaHandlerOptions): Handler {
         const allowed = o.remoteAllowed?.(ctx.node, GCHART_ORIGIN) ?? false;
         const note = allowed
           ? 'Drawing with Google Charts…'
-          : 'Google Chart, not loaded. Its data is shown below; load the chart from the Resources panel.';
+          : 'Google Chart, not loaded. Its data is shown below.';
         const frame = allowed ? frameHtml('gchart', JSON.stringify(spec), title) : '';
+        const slot = allowed ? '' : '<span class="m2-load-slot"></span>';
         resolve(
-          `<div class="m2-frame-host m2-gchart"><div class="m2-frame-fallback"><p class="m2-chart-note">${escapeHtml(note)}</p>${dataTable(spec.data)}</div>${frame}</div>`,
+          `<div class="m2-frame-host m2-gchart"><div class="m2-frame-fallback"><p class="m2-chart-note">${escapeHtml(note)}</p>${slot}${dataTable(spec.data)}</div>${frame}</div>`,
         );
       }),
   };

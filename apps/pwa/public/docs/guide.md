@@ -74,9 +74,11 @@ The safe default name is `page.bin`. The app offers `page.html` only after you c
 - **Ctrl+Shift+U** switches to the unstyled view and back.
 - **?** shows the keyboard sheet.
 
-- Dragging an image, link or text out of the page never drops it back into the app, so an accidental drag cannot replace your document. Dragging text within the editor still moves it.
+## Drag and drop
+
+Drop a `.md` file anywhere on the window to open it. Dragging an image, link or text out of the page never drops it back into the app, so an accidental drag cannot replace your document. Dragging text within the editor still moves it.
+
 ## Next
 
-- [Resources and encodings](resources.md)
+- Tour stop 2: [Markdown formatting](markdown.md), every formatting feature, tables included.
 - [Back to the welcome page](index.md)
-- [Markdown formatting](markdown.md)

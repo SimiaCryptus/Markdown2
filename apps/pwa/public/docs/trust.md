@@ -13,7 +13,7 @@ This resource lives on the web:
 https://md2.cognotik.com/icon.svg
 REMOTE
 
-It is locked. Open the **Resources** tab in the inspector and choose *Unlock…*. You are told which address will be contacted, and only this one resource is allowed.
+It is locked. Choose *Load from md2.cognotik.com…* on its card, or *Unlock…* in the **Resources** tab. You are told which site will be contacted, and you can allow just this resource or always allow the site.
 
 If the fetch fails, the resource fails closed and says why. A fetch can fail because the server does not allow cross-origin reads.
 
@@ -63,5 +63,5 @@ A few rules always hold:
 
 ## Next
 
-- [Document styles](styles.md)
 - [Back to the welcome page](index.md)
+- Tour stop 5: [Document styles](styles.md), themes and switches, and how you stay in charge.

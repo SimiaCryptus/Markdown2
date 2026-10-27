@@ -120,5 +120,5 @@ Markdown2 never passes raw HTML through, so <b>this is not bold</b>. To embed HT
 
 ## Next
 
-- [Resources and encodings](resources.md): what Markdown2 adds to Markdown.
 - [Back to the welcome page](index.md)
+- Tour stop 3: [Resources and encodings](resources.md), what Markdown2 adds to Markdown.

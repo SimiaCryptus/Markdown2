@@ -2,6 +2,7 @@
 title: Document styles
 ---
 
+<!--
 <<<BASE type="text/css" rel="stylesheet"
 md2-resource.callout {
   border-left: 4px solid #b0802a;
@@ -10,23 +11,32 @@ md2-resource.callout {
 }
 md2-resource.callout md2-document p { margin: 0; }
 BASE
+-->
+<!--
 
 <<<PAPER type="text/css" rel="stylesheet" md2-group="Page tint" title="Paper" md2-default="on"
 /* The reader's own page colours. */
 PAPER
+-->
+<!--
 
 <<<SEPIA type="text/css" rel="stylesheet" md2-group="Page tint" title="Sepia"
 :root { background: #f4ecd8; color: #3b2f1e; }
 SEPIA
+-->
+<!--
 
 <<<NIGHT type="text/css" rel="stylesheet" md2-group="Page tint" title="Night"
 :root { background: #1d1b22; color: #e6dfd2; }
 md2-resource { background: #26232d; border-color: #3a3644; }
 NIGHT
+-->
+<!--
 
 <<<SUMMARY type="text/css" rel="stylesheet" md2-group="Summary mode" title="Summary mode" md2-default="off"
 md2-resource.details { display: none; }
 SUMMARY
+-->
 
 # Document styles
 
@@ -96,5 +106,5 @@ That is how an encrypted or third-party section is kept from restyling the docum
 
 ## Next
 
-- [Using the app](guide.md)
 - [Back to the welcome page](index.md)
+- Tour stop 6: [Developer features](developer.md), code blocks that know their language, Mermaid diagrams and mathematics.
