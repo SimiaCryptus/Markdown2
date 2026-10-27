@@ -91,3 +91,11 @@
   - `basemap="liberty|bright|positron"` picks the OpenFreeMap style. simplestyle properties (`marker-color`,
     `stroke`, `fill`, …) colour features. Properties appear in popups as text, never HTML.
   - Tiles reach the network, so maps wait for *Load…* like charts; until then they list their features.
+- **Charts: Plotly and Vega-Lite** (`public/docs/charts.md`)
+  - `application/vnd.plotly.v1+json` and ```` ```plotly ````: plotly.js in an opaque-origin frame (`/sandbox/plotly.html`).
+    Only `staticPlot`, `scrollZoom`, `displayModeBar` and `doubleClick` are honoured from `config`.
+    The frame allows `'unsafe-eval'` (needed by the full bundle) and no remote origin, so geo and map traces cannot load.
+  - `application/vnd.vegalite.v5+json`, ```` ```vega-lite ```` and ```` ```vegalite ````: vega-embed in an opaque-origin frame
+    (`/sandbox/vega.html`). Expressions run through `vega-interpreter`, so no `'unsafe-eval'`. Data must be inline:
+    `url` and `href` keys are refused, and the frame's loader refuses every request.
+  - Both need no network, so they draw on open. Shared validation lives in `src/charts.ts`.

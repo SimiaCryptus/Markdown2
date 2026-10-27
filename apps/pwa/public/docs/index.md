@@ -334,6 +334,7 @@ Each page ends with a link to the next, and the last one brings you back here.
 | 7    | [Web pages and charts](embeds.md)              | Embedded pages and Google Charts, on your say-so       |
 | 8    | [Data tables](tables.md)                       | CSV and TSV grids: sort, filter, hide, resize          |
 | 9    | [Maps](maps.md)                                | GeoJSON on an interactive map, on your say-so          |
+| 10   | [Charts](charts.md)                            | Plotly and Vega-Lite charts from inline data           |
 
 Ready? [Start with using the app →](guide.md)
 ## Join the community

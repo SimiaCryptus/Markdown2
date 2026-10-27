@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for Vega-Lite. Expressions use vega-interpreter, so no 'unsafe-eval'.
+      Nothing is fetched: data must be inline.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src data: blob:; connect-src 'self' ws:"
+    />
+    <title>Vega-Lite chart</title>
+    <style>
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      #root { width: 100%; padding: 0.25rem 0; }
+      #root .vega-embed { display: block; width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/vega.ts"></script>
+  </body>
+</html>

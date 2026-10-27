@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-     "postinstall": "node scripts/vendor-x_ite.mjs",
-     "predev": "node scripts/vendor-x_ite.mjs",
-     "dev": "vite",
-     "prebuild": "node scripts/vendor-x_ite.mjs",
-     "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "postinstall": "node scripts/vendor-x_ite.mjs",
+    "predev": "node scripts/vendor-x_ite.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/vendor-x_ite.mjs",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
@@ -19,8 +19,13 @@
     "maplibre-gl": "^5.0.0",
     "mathjax-full": "^3.2.2",
     "mermaid": "^11.4.0",
-     "monaco-editor": "^0.52.0",
-     "x_ite": "^10.5.0"
+    "monaco-editor": "^0.52.0",
+    "plotly.js-dist-min": "^2.35.3",
+    "vega": "^5.30.0",
+    "vega-embed": "^6.26.0",
+    "vega-interpreter": "^1.0.5",
+    "vega-lite": "^5.21.0",
+    "x_ite": "^10.5.0"
   },
   "devDependencies": {
     "@types/geojson": "^7946.0.14",

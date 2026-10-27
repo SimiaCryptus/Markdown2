@@ -905,6 +905,9 @@ body[data-dragging] iframe { pointer-events: none; }
   #preview .m2-geo .m2-frame { border-radius: 8px; }
   #preview .m2-geo-bounds { margin: 0 0 0.6rem; font: 0.74rem/1.4 var(--mono); color: var(--muted); }
   #preview .m2-geo-data td:first-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* Plotly and Vega-Lite charts */
+  #preview .m2-chart .m2-frame { border-radius: 8px; }
+  #preview .m2-chart .m2-frame-fallback { max-height: 16em; overflow: auto; }
   :root[data-theme='dark'] #preview .m2-math { filter: invert(0.9); }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) #preview .m2-math { filter: invert(0.9); }

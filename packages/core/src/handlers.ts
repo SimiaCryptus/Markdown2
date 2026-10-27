@@ -225,6 +225,9 @@ export const FENCE_ALIASES: Readonly<Record<string, string>> = {
   tsv: 'text/tab-separated-values',
   x3d: 'model/x3d+xml',
   geojson: 'application/geo+json',
+  plotly: 'application/vnd.plotly.v1+json',
+  'vega-lite': 'application/vnd.vegalite.v5+json',
+  vegalite: 'application/vnd.vegalite.v5+json',
 };
 
 export function fenceAliasType(info: string): string | undefined {

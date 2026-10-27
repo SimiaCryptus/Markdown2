@@ -159,8 +159,9 @@ ROUTES
 
 ## Next
 
-That is the end of the tour.
+One more stop, then the end of the tour.
 
 - [Join the community](community.md): Markdown2 is open source, and ideas are welcome.
 - [Back to the welcome page](index.md), the showcase where it all started.
 - Related: [Locks, keys and remote resources](trust.md), and [data tables](tables.md).
+- Tour stop 10: [Charts](charts.md), Plotly and Vega-Lite, drawn from inline data.

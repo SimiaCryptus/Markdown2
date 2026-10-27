@@ -22,3 +22,14 @@ interface Window {
   showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
   launchQueue?: LaunchQueue;
 }
+
+// Libraries without bundled typings: only the part this app uses.
+declare module 'plotly.js-dist-min' {
+  interface PlotlyStatic {
+    newPlot(root: HTMLElement, data: unknown[], layout?: object, config?: object): Promise<unknown>;
+    addFrames(root: HTMLElement, frames: unknown[]): Promise<unknown>;
+  }
+  const Plotly: PlotlyStatic;
+  export default Plotly;
+}
+declare module 'vega-interpreter';

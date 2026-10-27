@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for Plotly. plotly.js is bundled with the script, so nothing is
+      fetched, and connect-src allows no remote origin: geo and map traces cannot load their
+      topology or tiles. 'unsafe-eval' is needed by the full plotly.js bundle; it buys nothing
+      outside this frame, which cannot reach the app, its storage or the network.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src data: blob:; connect-src 'self' ws:"
+    />
+    <title>Plotly chart</title>
+    <style>
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      #root { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/plotly.ts"></script>
+  </body>
+</html>

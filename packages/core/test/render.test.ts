@@ -37,6 +37,9 @@ describe('handler registry', () => {
   it('fence aliases', () => {
     expect(fenceAliasType('JSON')).toBe('application/json');
     expect(fenceAliasType('mermaid extra')).toBe('text/vnd.mermaid');
+    expect(fenceAliasType('Plotly')).toBe('application/vnd.plotly.v1+json');
+    expect(fenceAliasType('vega-lite')).toBe('application/vnd.vegalite.v5+json');
+    expect(fenceAliasType('vegalite')).toBe('application/vnd.vegalite.v5+json');
     expect(fenceAliasType('python')).toBeUndefined();
   });
 });

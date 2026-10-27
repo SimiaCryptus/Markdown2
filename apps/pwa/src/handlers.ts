@@ -10,6 +10,7 @@ import {
   type ResourceNode,
 } from '@markdown2/core';
 import { basemapFor, parseGeoJson, type GeoSummary } from './geo.js';
+import { parsePlotly, parseVegaLite } from './charts.js';
 
  /* Developer handlers for the PWA:
  *
@@ -36,7 +37,7 @@ const MAX_CHART_BYTES = 200_000;
 const MAX_CHART_ROWS = 5000;
 const SHOWN_CHART_ROWS = 50;
 
-export type FrameKind = 'code' | 'mermaid' | 'graphviz' | 'gchart' | 'x3d' | 'map';
+export type FrameKind = 'code' | 'mermaid' | 'graphviz' | 'gchart' | 'x3d' | 'map' | 'plotly' | 'vega';
 
 /** Fence info-string names → Monaco language ids (basic languages only). */
 const LANGS: Readonly<Record<string, string>> = {
@@ -453,6 +454,42 @@ export const mathHandler: Handler = {
     return `<div class="m2-math-block"><img class="m2-math" alt="${escapeHtml(src)}" src="data:image/svg+xml;base64,${data}"></div>`;
   },
 };
+// ------------------------------------------------------------------ charts (Plotly, Vega-Lite)
+const SHOWN_SPEC = 4000;
+/**
+* A chart frame. The validated spec is the frame's source; its JSON text stays
+* visible (escaped, truncated) until the chart reports that it has drawn.
+* Charts carry their data inline and need no network, so they draw at once.
+*/
+function chartHost(kind: 'plotly' | 'vega', spec: object, title: string): string {
+  const json = JSON.stringify(spec, null, 2);
+  const shown = json.length > SHOWN_SPEC ? `${json.slice(0, SHOWN_SPEC)}\n…` : json;
+  return `<div class="m2-frame-host m2-diagram m2-chart m2-${kind}"><pre class="m2-frame-fallback"><code class="language-json">${escapeHtml(shown)}</code></pre>${frameHtml(kind, JSON.stringify(spec), title)}</div>`;
+}
+/** Plotly figures, drawn by plotly.js in an opaque-origin frame (/sandbox/plotly.html). */
+export const plotlyHandler: Handler = {
+  types: ['application/vnd.plotly.v1+json'],
+  capabilities: ['view'],
+  render: (bytes, ctx) =>
+    new Promise<string>((resolve) => {
+      // A throw inside the executor rejects: handler-error fallback.
+      const spec = parsePlotly(strictUtf8(bytes));
+      const title = ctx.node?.resource.attributes.get('title') ?? 'Plotly chart';
+      resolve(chartHost('plotly', spec, title));
+    }),
+};
+/** Vega-Lite charts, drawn by vega-embed in an opaque-origin frame (/sandbox/vega.html). */
+export const vegaLiteHandler: Handler = {
+  types: ['application/vnd.vegalite.v5+json'],
+  capabilities: ['view'],
+  render: (bytes, ctx) =>
+    new Promise<string>((resolve) => {
+      const spec = parseVegaLite(strictUtf8(bytes));
+      const title = ctx.node?.resource.attributes.get('title') ?? 'Vega-Lite chart';
+      resolve(chartHost('vega', spec, title));
+    }),
+};
+
 
 export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
   const r = defaultHandlers();
@@ -466,6 +503,8 @@ export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
     pageHandler(o),
     chartHandler(o),
     mapHandler(o),
+    plotlyHandler,
+    vegaLiteHandler,
   ]) {
     r.register(h);
   }
