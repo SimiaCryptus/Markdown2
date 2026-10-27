@@ -106,37 +106,6 @@ Write `encoding` in **decoding order**. To produce the payload, do the steps in 
 compress → encrypt → base64   ⇒  encoding="base64 age gzip"
 ```
 
-| Decoder | Behaviour |
-|---|---|
-| `utf-8` | Default. Payload is text, validated as UTF-8 |
-| `base64` | RFC 4648. ASCII whitespace ignored. Wrap at 76 columns for diffs |
-| `gzip` | RFC 1952. Decompression bombs are stopped mid-stream |
-| `uri` | Optional. Must be **first**. The payload is one URI (whitespace trimmed). The fetched bytes are used, but the declared `type` wins over `Content-Type` and extensions |
-| `age` (and other encryption) | Capability-gated. AEAD only |
-
-- Compression is an encoding, not a type. A gzipped SVG is `type="image/svg+xml" encoding="base64 gzip"`. Use `type="application/gzip"` only when the archive itself is the object to save.
-- Compress before encrypting. Do not compress secrets together with attacker-influenced data (CRIME/BREACH).
-- Encryption is an encoding. The declared type is the real type, for example `encoding="base64 age"`.
-- Layered encryption (`base64 age age`) needs every layer granted: a two-person rule. Multiple recipients within one layer is the format's own feature (age supports it).
-- Nesting an encrypted `text/markdown` resource inside another protects a structure. Unlocking the outer one leaves the inner ones locked.
-- To hide the type of an encrypted resource, declare `text/markdown` outside and put the real typed resource inside. Title, type and size of a locked resource are always visible.
-- Other algorithms (`zstd`, `br`) are not core. A reader without them marks the resource `unsupported`.
-
-**States** (first match wins, in this order)
-1. `failed` (structural): unterminated, malformed opener, missing `type`, duplicate attribute, `uri` not first, limit already exceeded.
-2. `unsupported`: the stack names an unimplemented decoder.
-3. `locked`: a decoder needs an ungranted capability.
-4. `failed` (runtime): invalid base64, corrupt gzip, invalid UTF-8, quota exceeded (`limit-exceeded`).
-5. `decoded`.
-
-Examples: `frobnicate uri` is `failed`. `base64 frobnicate age` is `unsupported`.
-
-**Capabilities**
-- No decoder that needs authority (`uri`, encryption) runs without user action.
-- `uri` is `locked` by default for **all** schemes, including `file:` and relative references.
-- Grants are per resource and never propagate to children. Batch grants are explicit, scoped, and applied per node.
-- Server-side renderers must refuse loopback, link-local and private addresses, including after redirects.
-
 ## 5. Types and fallback
 
 - `type` is authoritative. **No sniffing.** `image/jpg` is not `image/jpeg`.
@@ -324,12 +293,6 @@ BIG
 
 **Minimal examples**
 
-```text
----
-title: Doc
----
-# Doc
-
 <<<DATA type="application/json" title="Data"
 {"a": 1}
 DATA
@@ -348,6 +311,3 @@ VAULT
 <<<REMOTE type="text/csv" encoding="uri" title="Planets"
 data/planets.csv
 REMOTE
-```
-
-*One sentence:* Markdown2 is Markdown with recursively embeddable, explicitly typed, explicitly encoded opaque resources. Everything else is a handler, a decoder or a convention.
