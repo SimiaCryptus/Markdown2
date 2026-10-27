@@ -1,0 +1,11 @@
+{
+    "id": "Markdown2",
+    "title": "Markdown2",
+    "category": "tool",
+    "href": "https://md2.cognotik.com/",
+    "readme": "README.md",
+    "section": "tools",
+    "icon": "M2",
+    "launchLabel": "Open Markdown2",
+    "pitch": "Markdown Evolved"
+}
