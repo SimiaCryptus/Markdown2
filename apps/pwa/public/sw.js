@@ -1,6 +1,6 @@
 // Barebones offline support: network first, cache fallback, same-origin GETs only.
 // Remote `uri` resources are cross-origin and are never cached here.
-const CACHE = 'm2-v5';
+const CACHE = 'm2-v6';
 const SHELL = [
    '/',
    '/index.html',
@@ -20,7 +20,10 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+   // One file at a time: a single missing file must not leave the whole shell uncached.
+   event.waitUntil(
+     caches.open(CACHE).then((c) => Promise.allSettled(SHELL.map((u) => c.add(u)))),
+   );
 });
 
 self.addEventListener('activate', (event) => {
@@ -47,11 +50,15 @@ self.addEventListener('fetch', (event) => {
         return res;
       })
       .catch(async () => {
-        const hit = await caches.match(req);
+         const hit = await caches.match(req, { ignoreSearch: req.mode === 'navigate' });
         if (hit) return hit;
         if (req.mode === 'navigate') {
-          const shell = await caches.match('/index.html');
+           const shell = (await caches.match('/index.html')) ?? (await caches.match('/'));
           if (shell) return shell;
+           return new Response(
+             '<!doctype html><meta charset="utf-8"><title>Offline</title><p>Markdown2 is offline and has not been cached yet. Reconnect and reload.</p>',
+             { status: 503, headers: { 'content-type': 'text/html; charset=utf-8' } },
+           );
         }
         return Response.error();
       }),

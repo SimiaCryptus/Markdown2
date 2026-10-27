@@ -47,10 +47,31 @@ function shimStorage(): void {
      }
    }
 }
+/**
+  * The frame has no `xr` permission, and should not get one. Without this,
+  * X_ITE probes `navigator.xr` on start-up, which logs permission-policy
+  * violations and rejects with an uncaught SecurityError. Hide WebXR so it
+  * never tries.
+  */
+function hideWebXR(): void {
+   try {
+     delete (Navigator.prototype as unknown as { xr?: unknown }).xr;
+   } catch {
+     // not configurable here; fall through
+   }
+   if ('xr' in navigator) {
+     try {
+       Object.defineProperty(navigator, 'xr', { value: undefined, configurable: true });
+     } catch {
+       // keep going: XR stays unavailable through the permissions policy anyway
+     }
+   }
+}
 
 
 function loadXite(): Promise<X3DGlobal> {
    shimStorage();
+    hideWebXR();
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = XITE;
@@ -74,6 +95,7 @@ serve(async ({ source }, root) => {
   canvas.setAttribute('notifications', 'false');
   canvas.setAttribute('contextMenu', 'false');
   canvas.setAttribute('cache', 'false');
+   canvas.setAttribute('xrSessionMode', 'NONE');
   canvas.style.cssText = 'display:block;width:100%;height:100%';
   root.append(canvas);
   const browser = (canvas as unknown as { browser?: X3DBrowser }).browser ?? X3D.getBrowser(canvas);
