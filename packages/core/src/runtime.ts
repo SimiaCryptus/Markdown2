@@ -18,6 +18,8 @@ export const DID_YOU_MEAN: Readonly<Record<string, string>> = {
   'application/x-yaml': 'application/yaml',
   'text/x-markdown': 'text/markdown',
   'text/mermaid': 'text/vnd.mermaid',
+  'text/x-graphviz': 'text/vnd.graphviz',
+  'text/graphviz': 'text/vnd.graphviz',
 };
 
 /** Media type essence; comparison stays exact, no content is inspected. */

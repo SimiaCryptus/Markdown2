@@ -32,14 +32,18 @@ const MAX_COLUMNS = 128;
 const SCAN_LIMIT = 4096;
 const REL = 'noopener noreferrer nofollow';
 
-type Block =
+type Block = (
   | { t: 'p'; text: string }
   | { t: 'h'; level: number; text: string }
   | { t: 'hr' }
   | { t: 'code'; info: string; body: string; fenced: boolean }
   | { t: 'quote'; children: Block[] }
   | { t: 'list'; ordered: boolean; start: number; tight: boolean; items: Block[][] }
-  | { t: 'table'; align: Align[]; head: string[]; rows: string[][] };
+  | { t: 'table'; align: Align[]; head: string[]; rows: string[][] }
+) & {
+  /** 0-based index of the block's first line in the lines given to the parser. */
+  line?: number;
+};
 
 type Align = '' | 'left' | 'center' | 'right';
 
@@ -272,6 +276,7 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
       i++;
       continue;
     }
+    const start = i;
 
     const fence = fenceStart(l);
     if (fence) {
@@ -282,7 +287,7 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
         i++;
       }
       i++; // closing fence, or past the end
-      out.push({ t: 'code', info: fence.info, body: body.join('\n'), fenced: true });
+      out.push({ t: 'code', info: fence.info, body: body.join('\n'), fenced: true, line: start });
       continue;
     }
 
@@ -293,20 +298,20 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
         i++;
       }
       while (body.length > 0 && BLANK.test(body.at(-1) ?? '')) body.pop();
-      out.push({ t: 'code', info: '', body: body.join('\n'), fenced: false });
+      out.push({ t: 'code', info: '', body: body.join('\n'), fenced: false, line: start });
       continue;
     }
 
     const atx = ATX.exec(l);
     if (atx) {
       const text = (atx[2] ?? '').replace(/(?:^|[ \t]+)#+[ \t]*$/, '').trim();
-      out.push({ t: 'h', level: (atx[1] ?? '#').length, text });
+      out.push({ t: 'h', level: (atx[1] ?? '#').length, text, line: start });
       i++;
       continue;
     }
 
     if (HR.test(l)) {
-      out.push({ t: 'hr' });
+      out.push({ t: 'hr', line: start });
       i++;
       continue;
     }
@@ -328,14 +333,14 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
         }
         break;
       }
-      out.push({ t: 'quote', children: nested(inner, depth) });
+      out.push({ t: 'quote', children: nested(inner, depth), line: start });
       continue;
     }
 
     const first = itemStart(l);
     if (first) {
       const r = parseList(lines, i, first, depth);
-      out.push(r.block);
+      out.push({ ...r.block, line: start });
       i = r.next;
       continue;
     }
@@ -349,7 +354,7 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
         rows.push(fitRow(splitRow(r), table.head.length));
         i++;
       }
-      out.push({ t: 'table', align: table.align, head: table.head, rows });
+      out.push({ t: 'table', align: table.align, head: table.head, rows, line: start });
       continue;
     }
 
@@ -371,7 +376,7 @@ function parseBlocks(lines: readonly string[], depth: number): Block[] {
       i++;
     }
     const text = para.join('\n').replace(/[ \t]+$/, '');
-    out.push(heading === null ? { t: 'p', text } : { t: 'h', level: heading, text });
+    out.push(heading === null ? { t: 'p', text, line: start } : { t: 'h', level: heading, text, line: start });
   }
   return out;
 }
@@ -837,6 +842,8 @@ async function renderBlocks(blocks: readonly Block[], fence: FenceFn, tight: boo
 export interface RenderedBlock {
   html: string;
   heading?: number;
+  /** 0-based line of the block within the prose text. */
+  line?: number;
 }
 
 /** Render Markdown prose into its top-level blocks. Everything is escaped. */
@@ -846,7 +853,8 @@ export async function renderMarkdownBlocks(text: string, opts: MarkdownOptions =
   const out: RenderedBlock[] = [];
   for (const b of parseBlocks(lines, 0)) {
     const html = await renderBlock(b, fence, false);
-    out.push(b.t === 'h' ? { html, heading: b.level } : { html });
+    const at = b.line === undefined ? {} : { line: b.line };
+    out.push(b.t === 'h' ? { html, heading: b.level, ...at } : { html, ...at });
   }
   return out;
 }

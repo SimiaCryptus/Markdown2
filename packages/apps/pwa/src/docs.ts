@@ -1,0 +1,1 @@
+{ path: '/docs/developer.md', title: 'Developer features', summary: 'Code, Mermaid, Graphviz, WaveDrom, maths, X3D' },

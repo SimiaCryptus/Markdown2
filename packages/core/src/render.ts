@@ -20,13 +20,24 @@ export interface RenderOptions {
    * default `pre > code`. Output should keep that shape (style.md §4.1).
    */
   codeFence?: CodeFenceRenderer;
+  /**
+   * Mark top-level blocks and resources with `data-m2-line`, the 0-based line
+   * in the source where they start (nested documents included). Editors use
+   * it to keep source and page in step. Off by default.
+   */
+  sourceLines?: boolean;
 }
 interface Ctx {
   handlers: HandlerRegistry;
   codeFence?: CodeFenceRenderer;
+  sourceLines: boolean;
 }
 
 const encoder = new TextEncoder();
+/** Add `data-m2-line` to the first element of an HTML fragment. */
+function withLine(html: string, line: number): string {
+  return html.replace(/^<([A-Za-z][A-Za-z0-9-]*)/, `<$1 data-m2-line="${line}"`);
+}
 
 /**
  * Fallback stub (§6.2, style.md §4.2). Shows label, type, encoding, state,
@@ -68,7 +79,7 @@ function attachmentChild(entry: ResolvedResource): Child {
   };
 }
 
-async function renderChild(entry: ResolvedResource, ctx: Ctx, rel: KnownRel): Promise<Child> {
+async function renderChild(entry: ResolvedResource, ctx: Ctx, rel: KnownRel, base: number): Promise<Child> {
   const { node, result } = entry;
   // Metadata is consumed and stylesheets are applied; neither is rendered inline.
   if (rel === 'metadata' || rel === 'stylesheet') {
@@ -80,7 +91,8 @@ async function renderChild(entry: ResolvedResource, ctx: Ctx, rel: KnownRel): Pr
   const handler = result.state === 'decoded' ? ctx.handlers.get('view', node.resource.type) : undefined;
   if (handler === undefined || result.bytes === undefined || type === undefined) return fallbackChild(entry);
 
-  const children = (): Promise<string> => renderDocument(entry.children ?? [], ctx, '');
+  // A nested payload starts on the line after its opener.
+  const children = (): Promise<string> => renderDocument(entry.children ?? [], ctx, '', base + node.startLine + 1);
   // A decoded text/markdown resource has an md2-document as its only child.
   if (type === 'text/markdown' && entry.children !== undefined) return { html: await children() };
   try {
@@ -151,7 +163,7 @@ function resourceAttrs(
   return out;
 }
 
-async function renderItems(nodes: readonly ResolvedNode[], ctx: Ctx): Promise<RenderedBlock[]> {
+async function renderItems(nodes: readonly ResolvedNode[], ctx: Ctx, base: number): Promise<RenderedBlock[]> {
   const { associations, orphans } = analyseRels(nodes.map((n) => (n.kind === 'prose' ? n : n.node)));
   const orphanSet = new Set(orphans);
   const byId = new Map<string, ResolvedResource>();
@@ -178,7 +190,12 @@ async function renderItems(nodes: readonly ResolvedNode[], ctx: Ctx): Promise<Re
   const items: RenderedBlock[] = [];
   for (const n of nodes) {
     if (n.kind === 'prose') {
-      if (/\S/.test(n.text)) items.push(...(await renderMarkdownBlocks(n.text, { fence })));
+      if (!/\S/.test(n.text)) continue;
+      for (const b of await renderMarkdownBlocks(n.text, { fence })) {
+        items.push(
+          ctx.sourceLines && b.line !== undefined ? { ...b, html: withLine(b.html, base + n.startLine + b.line) } : b,
+        );
+      }
       continue;
     }
     const id = n.node.id;
@@ -188,9 +205,10 @@ async function renderItems(nodes: readonly ResolvedNode[], ctx: Ctx): Promise<Re
     // "Render at most one of the two" (A.1, spec-issues #18).
     const candidates = rel === 'metadata' || rel === 'stylesheet' ? [n] : [n, ...(alternates.get(id) ?? [])];
     const shown = candidates.find((c) => renderable(c, ctx.handlers)) ?? n;
-    const child = await renderChild(shown, ctx, rel);
+    const child = await renderChild(shown, ctx, rel, base);
 
     const attrs = resourceAttrs(n, shown, rel, child.error);
+    if (ctx.sourceLines) attrs.push(['data-m2-line', String(base + n.node.startLine)]);
     if (shown !== n) attrs.push(['data-m2-shown', shown.node.id]);
     const target = describes.get(id);
     if (target !== undefined) {
@@ -226,15 +244,16 @@ function sectionize(items: readonly RenderedBlock[]): string {
   return out.join('\n');
 }
 
-async function renderDocument(nodes: readonly ResolvedNode[], ctx: Ctx, attrs: string): Promise<string> {
-  return `<md2-document${attrs}>${sectionize(await renderItems(nodes, ctx))}</md2-document>`;
+async function renderDocument(nodes: readonly ResolvedNode[], ctx: Ctx, attrs: string, base: number): Promise<string> {
+  return `<md2-document${attrs}>${sectionize(await renderItems(nodes, ctx, base))}</md2-document>`;
 }
 
 /** Render a resolved tree to the M2SS styling tree, as an HTML fragment. DOM-free. */
 export function renderHtml(nodes: readonly ResolvedNode[], opts: RenderOptions = {}): Promise<string> {
   const ctx: Ctx = {
     handlers: opts.handlers ?? defaultHandlers(),
+    sourceLines: opts.sourceLines === true,
     ...(opts.codeFence ? { codeFence: opts.codeFence } : {}),
   };
-  return renderDocument(nodes, ctx, ' data-m2-root');
+  return renderDocument(nodes, ctx, ' data-m2-root', 0);
 }

@@ -149,6 +149,9 @@ export function defaultHandlers(): HandlerRegistry {
  */
 export const FENCE_ALIASES: Readonly<Record<string, string>> = {
   mermaid: 'text/vnd.mermaid',
+  dot: 'text/vnd.graphviz',
+  graphviz: 'text/vnd.graphviz',
+  wavedrom: 'text/vnd.wavedrom',
   json: 'application/json',
   math: 'application/x-tex',
   csv: 'text/csv',

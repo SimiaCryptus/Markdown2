@@ -299,7 +299,15 @@ async function refresh(): Promise<void> {
   controller = ctl;
   const mine = ++seq;
   try {
-    const r = await runPipeline(editor.value, { registry, grants, handlers, uriPolicy, codeFence, signal: ctl.signal });
+     const r = await runPipeline(editor.value, {
+       registry,
+       grants,
+       handlers,
+       uriPolicy,
+       codeFence,
+       sourceLines: true,
+       signal: ctl.signal,
+     });
     if (mine !== seq) return; // a newer run superseded this one
     current = r;
     preview.innerHTML = r.html; // renderHtml escapes everything it emits
@@ -584,16 +592,20 @@ function revealInPreview(id: string): void {
   const target = document.getElementById(`m2-${id}`);
   if (!target) return;
   target.scrollIntoView({ block: 'center', behavior: reduceMotion.matches ? 'auto' : 'smooth' });
-  if (!reduceMotion.matches) {
-    target.animate(
-      [
-        { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
-        { boxShadow: '0 0 0 6px rgba(200, 151, 63, 0.45)' },
-        { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
-      ],
-      { duration: 1400, easing: 'ease-out' },
-    );
-  }
+   glow(target);
+}
+
+/** A brief gold glow around an element in the page. */
+function glow(target: HTMLElement): void {
+   if (reduceMotion.matches) return;
+   target.animate(
+     [
+       { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
+       { boxShadow: '0 0 0 6px rgba(200, 151, 63, 0.45)' },
+       { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
+     ],
+     { duration: 1400, easing: 'ease-out' },
+   );
 }
 
 /**
@@ -895,6 +907,43 @@ function showDiagnostics(diags: readonly Diagnostic[]): void {
   }
   renderGutter(true);
 }
+// ---------------------------------------------------------------- source/page sync (split view)
+/** Clicks on these never move the editor: they have their own job. */
+const INTERACTIVE =
+  'a, button, input, select, textarea, summary, label, iframe, m2-actions, m2-style-control, m2-grid-tools, thead th, .m2-col-resize';
+/** Source and page are both visible. */
+function isSplit(): boolean {
+  return document.body.dataset.view === 'split';
+}
+/** Scroll the page to the visible block that starts closest before `line`. */
+function seekPreview(line: number): void {
+  let best: HTMLElement | null = null;
+  let bestLine = -1;
+  for (const node of preview.querySelectorAll<HTMLElement>('[data-m2-line]')) {
+    const l = Number(node.dataset.m2Line);
+    if (!Number.isFinite(l) || l > line || l < bestLine) continue;
+    if (node.getClientRects().length === 0) continue; // hidden, e.g. stylesheets
+    best = node; // ties: the later (deeper) element wins
+    bestLine = l;
+  }
+  if (!best) return;
+  best.scrollIntoView({ block: 'center', behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+  glow(best);
+}
+/** Put the caret at the start of `line` in the source, without selecting it. */
+function seekEditor(line: number): void {
+  const lines = editor.value.split('\n');
+  const target = Math.max(0, Math.min(line, lines.length - 1));
+  let start = 0;
+  for (let k = 0; k < target; k++) start += (lines[k]?.length ?? 0) + 1;
+  editor.focus({ preventScroll: true });
+  editor.setSelectionRange(start, start);
+  const lh = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22;
+  editor.scrollTop = Math.max(0, target * lh - editor.clientHeight / 3);
+  syncGutter();
+  updateCursor();
+}
+
 
 // ---------------------------------------------------------------- documents
 type DocSource = { kind: 'file' } | { kind: 'share' } | { kind: 'draft' } | { kind: 'url'; url: URL };
@@ -1124,6 +1173,12 @@ editor.addEventListener('input', () => {
   schedule();
 });
 for (const type of ['keyup', 'click', 'select', 'focus'] as const) editor.addEventListener(type, updateCursor);
+// Split view: a click in the source shows the matching place in the page.
+editor.addEventListener('click', () => {
+   if (!isSplit() || editor.selectionStart !== editor.selectionEnd) return;
+   const line = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
+   seekPreview(line);
+});
 editor.addEventListener('scroll', syncGutter, { passive: true });
 gutterLines.addEventListener('click', (e) => {
   const t = (e.target as HTMLElement).closest<HTMLElement>('.gl.diag');
@@ -1326,6 +1381,17 @@ preview.addEventListener('click', (e) => {
     }
    e.preventDefault();
    navigateTo(target);
+});
+// Split view: a click in the page shows the matching place in the source.
+preview.addEventListener('click', (e) => {
+   if (!isSplit() || e.button !== 0) return;
+   if (!(window.getSelection()?.isCollapsed ?? true)) return; // the user is selecting text
+   const t = e.target instanceof Element ? e.target : null;
+   if (!t || t.closest(INTERACTIVE)) return;
+   const block = t.closest<HTMLElement>('[data-m2-line]');
+   if (!block || !preview.contains(block)) return;
+   const line = Number(block.dataset.m2Line);
+   if (Number.isFinite(line)) seekEditor(line);
 });
 window.addEventListener('popstate', () => {
    if (!confirmDiscard()) {

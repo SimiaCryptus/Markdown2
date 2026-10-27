@@ -206,6 +206,16 @@ describe('prototype keys never act as table entries', () => {
   });
 });
 describe('prose rendering', () => {
+  it('marks blocks and resources with their source line on request', async () => {
+    const src = '# A\n\ntext\n<<<M type="text/markdown"\nx\n\n## B\nM\n';
+    const out = await render(src, {}, { sourceLines: true });
+    expect(out).toContain('<h1 data-m2-line="0">A</h1>');
+    expect(out).toContain('<p data-m2-line="2">text</p>');
+    expect(out).toMatch(/<md2-resource [^>]*data-m2-line="3"/);
+    expect(out).toContain('<p data-m2-line="4">x</p>');
+    expect(out).toContain('<h2 data-m2-line="6">B</h2>');
+    expect(await render(src)).not.toContain('data-m2-line');
+  });
   it('renders Markdown structure between resources, escaped', async () => {
     const out = await render('# Head\n\n- *a*\n- b\n<<<T type="text/plain"\nx\nT\n> quote <i>\n');
     expect(out).toContain('<h1>Head</h1>');

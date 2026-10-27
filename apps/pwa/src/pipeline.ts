@@ -27,6 +27,8 @@ export interface PipelineOptions {
   signal?: AbortSignal;
   /** Presentation for fenced code, such as the Monaco frames. */
   codeFence?: CodeFenceRenderer;
+   /** Mark rendered blocks with their source line (`data-m2-line`), for editor/page sync. */
+   sourceLines?: boolean;
 }
 
 export interface PipelineResult {
@@ -58,6 +60,7 @@ export async function runPipeline(src: string, o: PipelineOptions): Promise<Pipe
   const html = await renderHtml(resolved, {
     handlers: o.handlers,
     ...(o.codeFence ? { codeFence: o.codeFence } : {}),
+     ...(o.sourceLines ? { sourceLines: true } : {}),
   });
   const resources = new Map(collectResources(resolved).map((e) => [e.node.id, e] as const));
   const styles = collectStyles(resolved);
