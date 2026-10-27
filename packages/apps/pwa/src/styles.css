@@ -1,4 +1,6 @@
 #preview .m2-math-block { text-align: center; overflow-x: auto; margin: 0 0 1.2em; }
 #preview .m2-math { max-width: 100%; }
+   #preview .m2-wave-block { text-align: center; overflow-x: auto; margin: 0 0 1.2em; }
+   #preview .m2-wavedrom { max-width: 100%; height: auto; }
 #preview .m2-wave-block { text-align: center; overflow-x: auto; margin: 0 0 1.2em; }
 #preview .m2-wavedrom { max-width: 100%; height: auto; }

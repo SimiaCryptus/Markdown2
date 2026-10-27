@@ -128,7 +128,6 @@ And a plain Markdown table gets the same controls:
 
 ## Next
 
-That is the end of the tour.
 
-- [Join the community](community.md): Markdown2 is open source, and ideas are welcome.
+- Tour stop 9: [Maps](maps.md), GeoJSON on an interactive map.
 - [Back to the welcome page](index.md), the showcase where it all started.

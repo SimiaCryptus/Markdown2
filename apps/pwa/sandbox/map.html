@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for maps. MapLibre GL JS comes from this site; tiles, styles,
+      glyphs and sprites come from tiles.openfreemap.org, and from nowhere else. MapLibre
+      starts its worker from a blob: URL, hence worker-src blob:.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src data: blob: https://tiles.openfreemap.org; worker-src blob:; child-src blob:; connect-src 'self' ws: https://tiles.openfreemap.org"
+    />
+    <title>Map</title>
+    <style>
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      #root { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/map.ts"></script>
+  </body>
+</html>

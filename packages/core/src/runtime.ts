@@ -20,6 +20,8 @@ export const DID_YOU_MEAN: Readonly<Record<string, string>> = {
   'text/mermaid': 'text/vnd.mermaid',
   'text/x-graphviz': 'text/vnd.graphviz',
   'text/graphviz': 'text/vnd.graphviz',
+  'application/geojson': 'application/geo+json',
+  'application/vnd.geo+json': 'application/geo+json',
 };
 
 /** Media type essence; comparison stays exact, no content is inspected. */

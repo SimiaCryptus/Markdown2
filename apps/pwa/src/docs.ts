@@ -18,5 +18,6 @@ export const DOCS: readonly DocEntry[] = [
   { path: '/docs/developer.md', title: 'Developer features', summary: 'Code, Mermaid, Graphviz, WaveDrom, maths, X3D' },
   { path: '/docs/embeds.md', title: 'Web pages and charts', summary: 'Embedded pages and Google Charts' },
   { path: '/docs/tables.md', title: 'Data tables', summary: 'CSV and TSV grids: sort, filter, hide, resize' },
+  { path: '/docs/maps.md', title: 'Maps', summary: 'GeoJSON on an interactive map' },
   { path: '/docs/community.md', title: 'Join the community', summary: 'Markdown2 on GitHub, and how to help' },
 ];

@@ -70,6 +70,28 @@ export class HandlerRegistry {
 }
 
 const lenientUtf8 = new TextDecoder('utf-8');
+/** Largest diagram source accepted by the diagram handlers, in UTF-16 code units. */
+const MAX_DIAGRAM = 256 * 1024;
+/** Largest WaveJSON source accepted by the WaveDrom handler. */
+const MAX_WAVE = 256 * 1024;
+/** Decode strict UTF-8. Throws on invalid input, so a handler rejects and falls back. */
+function strictUtf8(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+}
+/**
+ * Opaque-origin frame for a sandboxed renderer page (/sandbox/<kind>.html).
+ * `allow-same-origin` is never granted. The reader passes `data-m2-source`
+ * to the frame by postMessage. Until the frame draws, the sibling
+ * `.m2-frame-fallback` shows the source.
+ */
+function frameHtml(kind: string, src: string, title: string, engine?: string): string {
+  const engineAttr = engine === undefined ? '' : ` data-m2-engine="${escapeHtml(engine)}"`;
+  return `<iframe class="m2-frame" sandbox="allow-scripts" referrerpolicy="no-referrer" src="/sandbox/${escapeHtml(kind)}.html" title="${escapeHtml(title)}" data-m2-frame="${escapeHtml(kind)}" data-m2-source="${escapeHtml(src)}"${engineAttr}></iframe>`;
+}
+/** Shape of the lazily loaded WaveDrom module. */
+interface WavedromModule {
+  waveToSvg(src: string): string;
+}
 
 export const textHandler: Handler = {
   types: ['text/plain'],
@@ -120,6 +142,55 @@ export const imageHandler: Handler = {
     );
   },
 };
+/** Graphviz layout engines; anything else falls back to `dot`. */
+const GRAPHVIZ_ENGINES: ReadonlySet<string> = new Set([
+  'dot',
+  'neato',
+  'fdp',
+  'sfdp',
+  'circo',
+  'twopi',
+  'osage',
+  'patchwork',
+]);
+/**
+ * Graphviz graphs, drawn by Graphviz (WebAssembly) in an opaque-origin frame
+ * (/sandbox/graphviz.html). The `layout` attribute picks the engine.
+ */
+export const graphvizHandler: Handler = {
+  types: ['text/vnd.graphviz'],
+  capabilities: ['view'],
+  render: (bytes, ctx) =>
+    new Promise<string>((resolve) => {
+      // A throw inside the executor rejects: handler-error fallback.
+      const src = strictUtf8(bytes);
+      if (src.length > MAX_DIAGRAM) throw new Error('graph too large');
+      const layout = ctx.node?.resource.attributes.get('layout');
+      const engine = layout !== undefined && GRAPHVIZ_ENGINES.has(layout) ? layout : 'dot';
+      const title = ctx.node?.resource.attributes.get('title') ?? 'Graphviz graph';
+      resolve(
+        `<div class="m2-frame-host m2-diagram m2-graphviz"><pre class="m2-frame-fallback"><code class="language-dot">${escapeHtml(src)}</code></pre>${frameHtml('graphviz', src, title, engine)}</div>`,
+      );
+    }),
+};
+/**
+ * WaveDrom timing diagrams and register maps. WaveJSON is parsed as JSON5,
+ * never evaluated; the SVG is shown through <img>.
+ */
+export const wavedromHandler: Handler = {
+  types: ['text/vnd.wavedrom'],
+  capabilities: ['view'],
+  async render(bytes, ctx) {
+    const src = strictUtf8(bytes);
+    if (src.length > MAX_WAVE) throw new Error('diagram too large');
+    // lazy: only when a diagram appears
+    const { waveToSvg } = (await import('./wavedrom.js')) as WavedromModule;
+    const svg = waveToSvg(src);
+    const data = encodeBase64(new TextEncoder().encode(svg));
+    const title = ctx.node?.resource.attributes.get('title') ?? 'WaveDrom diagram';
+    return `<div class="m2-wave-block"><img class="m2-wavedrom" alt="${escapeHtml(title)}" src="data:image/svg+xml;base64,${data}"></div>`;
+  },
+};
 /**
  * CSV (RFC 4180, honouring `header=absent`) and TSV, rendered as an escaped
  * `table.m2-grid`. Readers may add sorting and filtering on top.
@@ -157,6 +228,7 @@ export const FENCE_ALIASES: Readonly<Record<string, string>> = {
   csv: 'text/csv',
   tsv: 'text/tab-separated-values',
   x3d: 'model/x3d+xml',
+  geojson: 'application/geo+json',
 };
 
 export function fenceAliasType(info: string): string | undefined {

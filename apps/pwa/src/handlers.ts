@@ -8,6 +8,7 @@ import {
   type HandlerRegistry,
   type ResourceNode,
 } from '@markdown2/core';
+import { basemapFor, parseGeoJson, type GeoSummary } from './geo.js';
 
 /**
  * Developer handlers for the PWA:
@@ -17,7 +18,8 @@ import {
  * - application/x-tex, application/mathml+xml: MathJax to SVG, shown through <img>;
   * - model/x3d+xml, model/x3d-vrml, model/vrml: X3D scenes drawn by X_ITE in a sandboxed frame;
  * - text/uri-list: an embedded web page in a sandboxed frame;
- * - application/vnd.google.charts+json: Google Charts in a sandboxed frame.
+* - application/vnd.google.charts+json: Google Charts in a sandboxed frame;
+* - application/geo+json: an interactive map (MapLibre GL JS, OpenFreeMap tiles) in a sandboxed frame.
  *
  * Frames always carry the escaped source as a fallback, which stays visible
  * until the frame reports that it has drawn (offline, blocked or failed).
@@ -34,7 +36,7 @@ const MAX_CHART_BYTES = 200_000;
 const MAX_CHART_ROWS = 5000;
 const SHOWN_CHART_ROWS = 50;
 
-export type FrameKind = 'code' | 'mermaid' | 'gchart' | 'x3d';
+export type FrameKind = 'code' | 'mermaid' | 'gchart' | 'x3d' | 'map';
 
 /** Fence info-string names → Monaco language ids (basic languages only). */
 const LANGS: Readonly<Record<string, string>> = {
@@ -206,6 +208,11 @@ export interface PwaHandlerOptions {
 export const PAGE_TYPE = 'text/uri-list';
 export const GCHART_TYPE = 'application/vnd.google.charts+json';
 export const GCHART_ORIGIN = 'https://www.gstatic.com';
+export const GEOJSON_TYPE = 'application/geo+json';
+/** OpenFreeMap serves styles, tiles, glyphs and sprites from this one origin. */
+export const MAP_ORIGIN = 'https://tiles.openfreemap.org';
+const MAX_GEOJSON_BYTES = 5_000_000;
+const SHOWN_FEATURES = 50;
 
 /** Sandbox for embedded pages. No top navigation, so a page can never replace the app. */
 const PAGE_SANDBOX = 'allow-scripts allow-same-origin allow-popups allow-presentation';
@@ -283,6 +290,14 @@ export function remoteNeed(type: string | undefined, bytes: Uint8Array, appOrigi
       return null;
     }
   }
+  if (t === GEOJSON_TYPE) {
+    try {
+      parseGeo(bytes);
+      return { origin: MAP_ORIGIN, label: 'OpenFreeMap (tiles.openfreemap.org)' };
+    } catch {
+      return null;
+    }
+  }
   return null;
 }
 
@@ -356,9 +371,54 @@ function chartHandler(o: PwaHandlerOptions): Handler {
       }),
   };
 }
+// ------------------------------------------------------------------ maps
+/** Validate GeoJSON bytes. Throws on anything unusable. */
+export function parseGeo(bytes: Uint8Array): GeoSummary {
+  if (bytes.length > MAX_GEOJSON_BYTES) throw new Error('GeoJSON too large');
+  return parseGeoJson(strictUtf8(bytes));
+}
+/** What the map holds, as escaped text: shown until the map draws, and whenever it cannot. */
+function geoSummaryHtml(geo: GeoSummary): string {
+  const n = geo.features.length;
+  const b = geo.bounds;
+  const where =
+    b === null
+      ? ''
+      : ` · west ${b[0].toFixed(4)}, south ${b[1].toFixed(4)}, east ${b[2].toFixed(4)}, north ${b[3].toFixed(4)}`;
+  const rows = geo.features
+    .slice(0, SHOWN_FEATURES)
+    .map((f, k) => `<tr><td>${k + 1}</td><td>${escapeHtml(f.name)}</td><td>${escapeHtml(f.geometry)}</td></tr>`)
+    .join('');
+  const more = n > SHOWN_FEATURES ? `<tr><td colspan="3">… ${n - SHOWN_FEATURES} more features</td></tr>` : '';
+  return `<p class="m2-geo-bounds">${n} feature${n === 1 ? '' : 's'}${where}</p><table class="m2-geo-data"><thead><tr><th>#</th><th>Name</th><th>Geometry</th></tr></thead><tbody>${rows}${more}</tbody></table>`;
+}
+function mapHandler(o: PwaHandlerOptions): Handler {
+  return {
+    types: [GEOJSON_TYPE],
+    capabilities: ['view'],
+    render: (bytes, ctx) =>
+      new Promise<string>((resolve) => {
+        // A throw inside the executor rejects: handler-error fallback.
+        const geo = parseGeo(bytes);
+        const attrs = ctx.node?.resource.attributes;
+        const title = attrs?.get('title') ?? 'Map';
+        const basemap = basemapFor(attrs?.get('basemap'));
+        const allowed = o.remoteAllowed?.(ctx.node, MAP_ORIGIN) ?? false;
+        const note = allowed ? 'Drawing the map…' : 'Map, not loaded. Its features are listed below.';
+        const frame = allowed ? frameHtml('map', JSON.stringify(geo.json), title, basemap) : '';
+        const slot = allowed ? '' : '<span class="m2-load-slot"></span>';
+        resolve(
+          `<div class="m2-frame-host m2-geo"><div class="m2-frame-fallback"><p class="m2-chart-note">${escapeHtml(note)}</p>${slot}${geoSummaryHtml(geo)}</div>${frame}</div>`,
+        );
+      }),
+  };
+}
+
 
 export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
   const r = defaultHandlers();
-   for (const h of [codeHandler, mermaidHandler, mathHandler, x3dHandler, pageHandler(o), chartHandler(o)]) r.register(h);
+  for (const h of [codeHandler, mermaidHandler, mathHandler, x3dHandler, pageHandler(o), chartHandler(o), mapHandler(o)]) {
+    r.register(h);
+  }
   return r;
 }

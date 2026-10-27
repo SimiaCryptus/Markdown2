@@ -1014,7 +1014,7 @@ async function saveDoc(): Promise<void> {
 
 function editPolicy(): void {
   const answer = prompt(
-    'Origins allowed to serve remote resources, embedded pages and charts (https only, space separated).\nFor Google Charts, add https://www.gstatic.com.\nLeave empty to keep everything remote locked.',
+    'Origins allowed to serve remote resources, embedded pages, charts and maps (https only, space separated).\nFor Google Charts, add https://www.gstatic.com. For maps, add https://tiles.openfreemap.org.\nLeave empty to keep everything remote locked.',
     [...origins].join(' '),
   );
   if (answer === null) return;
