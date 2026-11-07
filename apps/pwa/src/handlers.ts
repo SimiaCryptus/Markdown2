@@ -9,6 +9,7 @@ import {
   type HandlerRegistry,
   type ResourceNode,
 } from '@markdown2/core';
+import type { CanonicalJson, Value } from '@datacalc/core';
 import { basemapFor, parseGeoJson, type GeoSummary } from './geo.js';
 import { parsePlotly, parseVegaLite } from './charts.js';
 
@@ -20,7 +21,9 @@ import { parsePlotly, parseVegaLite } from './charts.js';
   * - model/x3d+xml, model/x3d-vrml, model/vrml: X3D scenes drawn by X_ITE in a sandboxed frame;
  * - text/uri-list: an embedded web page in a sandboxed frame;
 * - application/vnd.google.charts+json: Google Charts in a sandboxed frame;
-* - application/geo+json: an interactive map (MapLibre GL JS, OpenFreeMap tiles) in a sandboxed frame.
+* - application/geo+json: an interactive map (MapLibre GL JS, OpenFreeMap tiles) in a sandboxed frame;
+* - text/vnd.tartlet: a Tartlet music sketch with a player in a sandboxed frame;
+* - text/vnd.datacalc, application/vnd.datacalc+json: a live DataCalculator workbook in a sandboxed frame.
  *
  * Frames always carry the escaped source as a fallback, which stays visible
  * until the frame reports that it has drawn (offline, blocked or failed).
@@ -37,7 +40,17 @@ const MAX_CHART_BYTES = 200_000;
 const MAX_CHART_ROWS = 5000;
 const SHOWN_CHART_ROWS = 50;
 
-export type FrameKind = 'code' | 'mermaid' | 'graphviz' | 'gchart' | 'x3d' | 'map' | 'plotly' | 'vega';
+export type FrameKind =
+  | 'code'
+  | 'mermaid'
+  | 'graphviz'
+  | 'gchart'
+  | 'x3d'
+  | 'map'
+  | 'plotly'
+  | 'vega'
+  | 'tartlet'
+  | 'datacalc';
 
 /** Fence info-string names → Monaco language ids (basic languages only). */
 const LANGS: Readonly<Record<string, string>> = {
@@ -179,6 +192,115 @@ export const x3dHandler: Handler = {
          `<div class="m2-frame-host m2-x3d"><pre class="m2-frame-fallback"><code class="language-${lang}">${escapeHtml(src)}</code></pre>${frameHtml('x3d', src, title, lang)}</div>`,
        );
      }),
+};
+
+// ------------------------------------------------------------------ music (Tartlet)
+
+/** Provisional media type for Tartlet sketches (Strudel-compatible mini-notation, never evaluated). */
+export const TARTLET_TYPE = 'text/vnd.tartlet';
+/** Tartlet's own source limit (maxSourceBytes). */
+const MAX_TARTLET = 65_536;
+const SEED = /^[\w.-]{1,64}$/;
+
+/**
+ * Tartlet music sketches. The sketch is checked here with Tartlet's closed
+ * language (bundled from ../../../tartlet through relative paths); if no track
+ * can play, the resource falls back with handler-error. Playable sketches get a
+ * player in an opaque-origin frame (/sandbox/tartlet.html). Tartlet reaches no
+ * network, so the player draws at once; sound starts only on a press of play.
+ * The optional `tartlet-seed` attribute picks a different random variation.
+ */
+export const tartletHandler: Handler = {
+  types: [TARTLET_TYPE],
+  capabilities: ['view', 'validate'],
+  async render(bytes, ctx) {
+    if (bytes.length > MAX_TARTLET) throw new Error('sketch too large');
+    const src = strictUtf8(bytes);
+    // lazy: only when a sketch appears
+    const { check } = await import('@tartlet/check');
+    const r = check(src, { documentId: 'markdown2', blobIndex: '0' });
+    if (!r.program.outputs.some((o) => o.status === 'ok')) {
+      throw new Error(r.diagnostics[0]?.message ?? 'nothing in this sketch can play');
+    }
+    const attrs = ctx.node?.resource.attributes;
+    const title = attrs?.get('title') ?? 'Tartlet sketch';
+    const raw = attrs?.get('tartlet-seed');
+    const seed = raw !== undefined && SEED.test(raw) ? raw : undefined;
+    return `<div class="m2-frame-host m2-diagram m2-tartlet"><pre class="m2-frame-fallback"><code class="language-tartlet">${escapeHtml(src)}</code></pre>${frameHtml('tartlet', src, title, seed)}</div>`;
+  },
+};
+
+// ------------------------------------------------------------------ calculators (DataCalculator)
+
+/** Provisional media types for DataCalculator workbooks: text syntax and canonical JSON. */
+export const DATACALC_TYPE = 'text/vnd.datacalc';
+export const DATACALC_JSON_TYPE = 'application/vnd.datacalc+json';
+const MAX_WORKBOOK = 1_000_000;
+const SHOWN_VALUES = 50;
+
+/**
+ * DataCalculator workbooks (bundled from ../../../DataCalculator through relative
+ * paths). The workbook is loaded here to produce an escaped summary of its named
+ * values and authoring errors: shown until the frame draws, and whenever it cannot.
+ * The live form and grids run in an opaque-origin frame (/sandbox/datacalc.html).
+ *
+ * Authoring errors do not reject: they are shown inside the view, so a workbook
+ * with a typo still renders. Only non-UTF-8, oversized or non-object JSON falls back.
+ */
+export const datacalcHandler: Handler = {
+  types: [DATACALC_TYPE, DATACALC_JSON_TYPE],
+  capabilities: ['view', 'validate'],
+  async render(bytes, ctx) {
+    if (bytes.length > MAX_WORKBOOK) throw new Error('workbook too large');
+    const src = strictUtf8(bytes);
+    const json = ctx.type === DATACALC_JSON_TYPE;
+    let workbook: string | CanonicalJson = src;
+    if (json) {
+      const parsed: unknown = JSON.parse(src);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('a DataCalculator JSON workbook is an object');
+      }
+      workbook = parsed as CanonicalJson;
+    }
+    // lazy: only when a workbook appears
+    const { load, formatValue, defaultFormat } = await import('@datacalc/core');
+    const wb = load(workbook);
+    let rows = '';
+    let errors: string[] = [];
+    let sheets = 0;
+    try {
+      const schema = wb.schema();
+      sheets = schema.sheets.length;
+      rows = schema.params
+        .filter((p) => !p.name.startsWith('__'))
+        .slice(0, SHOWN_VALUES)
+        .map((p) => {
+          let v: Value;
+          try {
+            v = wb.get(p.name);
+          } catch {
+            v = null;
+          }
+          const f = defaultFormat(p.type);
+          const text = formatValue(v, f.format, f.currency !== undefined ? { currency: f.currency } : {});
+          return `<tr><td>${escapeHtml(p.name)}</td><td>${escapeHtml(text)}</td></tr>`;
+        })
+        .join('');
+      errors = wb.diagnostics.filter((d) => d.severity === 'error').map((d) => d.message);
+    } finally {
+      wb.dispose();
+    }
+    const title = ctx.node?.resource.attributes.get('title') ?? 'Calculator';
+    const note = `Live calculator${sheets > 0 ? ` with ${sheets} sheet${sheets === 1 ? '' : 's'}` : ''}. Its values are listed below until it loads.`;
+    const errList = errors.length
+      ? `<ul class="m2-calc-errors">${errors
+          .slice(0, 20)
+          .map((m) => `<li>${escapeHtml(m)}</li>`)
+          .join('')}</ul>`
+      : '';
+    const table = rows === '' ? '' : `<table class="m2-calc-values"><thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<div class="m2-frame-host m2-calc"><div class="m2-frame-fallback"><p class="m2-chart-note">${escapeHtml(note)}</p>${errList}${table}</div>${frameHtml('datacalc', src, title, json ? 'json' : 'text')}</div>`;
+  },
 };
 
 // ------------------------------------------------------------------ remote views
@@ -500,6 +622,8 @@ export function createHandlers(o: PwaHandlerOptions = {}): HandlerRegistry {
     wavedromHandler,
     mathHandler,
     x3dHandler,
+    tartletHandler,
+    datacalcHandler,
     pageHandler(o),
     chartHandler(o),
     mapHandler(o),

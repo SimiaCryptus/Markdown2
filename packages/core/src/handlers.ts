@@ -228,6 +228,8 @@ export const FENCE_ALIASES: Readonly<Record<string, string>> = {
   plotly: 'application/vnd.plotly.v1+json',
   'vega-lite': 'application/vnd.vegalite.v5+json',
   vegalite: 'application/vnd.vegalite.v5+json',
+  tartlet: 'text/vnd.tartlet',
+  datacalc: 'text/vnd.datacalc',
 };
 
 export function fenceAliasType(info: string): string | undefined {

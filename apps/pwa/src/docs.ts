@@ -20,5 +20,7 @@ export const DOCS: readonly DocEntry[] = [
   { path: '/docs/tables.md', title: 'Data tables', summary: 'CSV and TSV grids: sort, filter, hide, resize' },
   { path: '/docs/maps.md', title: 'Maps', summary: 'GeoJSON on an interactive map' },
   { path: '/docs/charts.md', title: 'Charts', summary: 'Plotly and Vega-Lite, drawn from inline data' },
+  { path: '/docs/calculators.md', title: 'Calculators', summary: 'Live DataCalculator workbooks: forms and formulas' },
+  { path: '/docs/music.md', title: 'Music', summary: 'Tartlet sketches you can play' },
   { path: '/docs/community.md', title: 'Join the community', summary: 'Markdown2 on GitHub, and how to help' },
 ];

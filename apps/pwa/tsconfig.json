@@ -15,7 +15,9 @@
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
-      "@markdown2/core": ["../../packages/core/src/index.ts"]
+      "@markdown2/core": ["../../packages/core/src/index.ts"],
+      "@tartlet/*": ["../../../tartlet/packages/*/src/index.ts"],
+      "@datacalc/core": ["../../../DataCalculator/src/index.ts"]
     }
   },
   "include": ["src", "test", "vite.config.ts"]

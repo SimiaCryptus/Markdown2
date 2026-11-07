@@ -1,6 +1,6 @@
 // Barebones offline support: network first, cache fallback, same-origin GETs only.
 // Remote `uri` resources are cross-origin and are never cached here.
-const CACHE = 'm2-v8';
+const CACHE = 'm2-v10';
 const SHELL = [
   '/',
   '/index.html',
@@ -17,6 +17,8 @@ const SHELL = [
   '/docs/tables.md',
   '/docs/maps.md',
   '/docs/charts.md',
+  '/docs/calculators.md',
+  '/docs/music.md',
   '/docs/community.md',
   '/docs/data/planets.csv',
 ];

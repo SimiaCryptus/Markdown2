@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for Tartlet music sketches. Tartlet is bundled from this site and
+      never evaluates the sketch as code. blob: is needed for its static audio worklets (the
+      master-bus safety limiter). Nothing is fetched from the web.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src data:; connect-src 'self' ws:"
+    />
+    <title>Music sketch</title>
+    <style>
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      #root { width: 100%; padding: 2px; box-sizing: border-box; font: 13px/1.4 system-ui, sans-serif; }
+      .m2-pulse { margin: 8px 2px 0; color: #b4441c; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/tartlet.ts"></script>
+  </body>
+</html>

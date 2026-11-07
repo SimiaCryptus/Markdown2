@@ -22,6 +22,11 @@ export const DID_YOU_MEAN: Readonly<Record<string, string>> = {
   'text/graphviz': 'text/vnd.graphviz',
   'application/geojson': 'application/geo+json',
   'application/vnd.geo+json': 'application/geo+json',
+  'text/tartlet': 'text/vnd.tartlet',
+  'text/x-tartlet': 'text/vnd.tartlet',
+  'text/datacalc': 'text/vnd.datacalc',
+  'text/x-datacalc': 'text/vnd.datacalc',
+  'application/datacalc+json': 'application/vnd.datacalc+json',
 };
 
 /** Media type essence; comparison stays exact, no content is inspected. */

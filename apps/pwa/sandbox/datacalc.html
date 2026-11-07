@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for DataCalculator workbooks. The engine and its views are bundled
+      from this site. Formulas are pure: they cannot fetch, script or reach the app. Nothing is
+      fetched from the web.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src data:; connect-src 'self' ws:"
+    />
+    <title>Calculator</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --text: #25222c;
+        --muted: #706979;
+        --surface: #fbf8f2;
+        --surface-2: #f3eee4;
+        --paper: #fffdf8;
+        --rule: #e0d7c7;
+        --rule-strong: #cbbfa9;
+        --teal: #0f6b5f;
+        --on-teal: #ffffff;
+        --gold: #b0802a;
+        --bad: #b4441c;
+        --bad-soft: #f7e0d5;
+        --warn-soft: #f3e4c3;
+      }
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --text: #e6e0d3;
+        --muted: #9c94a5;
+        --surface: #1b1a22;
+        --surface-2: #22202a;
+        --paper: #1f1d26;
+        --rule: #2f2c38;
+        --rule-strong: #443f4f;
+        --teal: #57c0ac;
+        --on-teal: #10201d;
+        --gold: #d9a84e;
+        --bad: #ef7c55;
+        --bad-soft: #3b211a;
+        --warn-soft: #3a2f1a;
+      }
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      body { font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: var(--text); }
+      #root { width: 100%; padding: 2px; box-sizing: border-box; }
+      * { box-sizing: border-box; }
+      input, select, button { font: inherit; color: inherit; }
+      input:not([type='checkbox']), select {
+        padding: 0.35rem 0.55rem; border-radius: 7px; border: 1px solid var(--rule-strong); background: var(--paper);
+      }
+      input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+      [aria-invalid='true'] { border-color: var(--bad) !important; }
+      .datacalc { display: grid; gap: 14px; }
+      .dc-diagnostics {
+        margin: 0; padding: 8px 12px 8px 28px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); font-size: 13px;
+      }
+      .dc-form {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 16px;
+        padding: 14px; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface-2);
+      }
+      .dc-field { display: flex; flex-direction: column; gap: 5px; }
+      .dc-field > span:first-child {
+        font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+      }
+      .dc-field input, .dc-field select { width: 100%; font-variant-numeric: tabular-nums; }
+      .dc-issue { min-height: 1.1em; font-size: 12px; color: var(--bad); }
+      .dc-output, .dc-value {
+        display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0;
+        padding: 10px 14px; border: 1px solid var(--rule); border-radius: 10px; background: var(--paper);
+      }
+      .dc-output { grid-column: 1 / -1; }
+      .dc-output span, .dc-value span { color: var(--muted); font-weight: 550; }
+      .dc-output output, .dc-value output { font: 650 19px ui-monospace, Menlo, Consolas, monospace; color: var(--teal); font-variant-numeric: tabular-nums; }
+      output[aria-invalid='true'] { color: var(--bad); }
+      .dc-table { display: block; overflow-x: auto; width: 100%; border-collapse: collapse; border: 1px solid var(--rule); border-radius: 10px; font-size: 13px; }
+      .dc-table th, .dc-table td { padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: left; vertical-align: middle; }
+      .dc-table thead th { background: var(--surface-2); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+      .dc-table input, .dc-table select { width: 100%; min-width: 6em; padding: 3px 7px; }
+      .dc-table td > span { font-family: ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+      .dc-table td[data-overridden] { background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--gold); }
+      .dc-table .dc-formula { display: block; margin: 3px 0; color: var(--muted); font-size: 11px; }
+      .dc-table span[aria-invalid='true'] { color: var(--bad); }
+      .dc-table button {
+        padding: 3px 9px; border-radius: 6px; border: 1px solid var(--rule-strong); background: var(--surface); cursor: pointer; font-size: 12px;
+      }
+      .dc-table button:hover { border-color: var(--bad); color: var(--bad); }
+      .dc-table tfoot td { background: var(--surface-2); }
+      .dc-table tfoot label { display: inline-flex; align-items: center; gap: 5px; margin: 3px 8px 3px 0; font-size: 12px; color: var(--muted); }
+      .dc-table tfoot input, .dc-table tfoot select { width: 7em; min-width: 0; }
+      .dc-table tfoot button:last-child { border-color: var(--teal); background: var(--teal); color: var(--on-teal); }
+      .dc-table caption { caption-side: bottom; text-align: left; padding: 0 10px; color: var(--bad); font-size: 12px; }
+      .dc-table caption:not(:empty) { padding: 6px 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/datacalc.ts"></script>
+  </body>
+</html>

@@ -4,3 +4,4 @@ coverage/
 reports/
 *.tsbuildinfo
 public/vendor/
+test

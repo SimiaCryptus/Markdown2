@@ -54,6 +54,14 @@
      and served from this origin; the frame fetches nothing from the web.
   - Frames have an opaque origin and show the escaped source until they report that they have drawn.
     Their scripts are CORS requests, so production needs the CloudFront CORS policy in `terraform/`.
+- **Calculators** (`public/docs/calculators.md`)
+  - `text/vnd.datacalc`, ```` ```datacalc ```` and `application/vnd.datacalc+json`: live DataCalculator workbooks.
+  - DataCalculator is bundled from the sibling `DataCalculator/` folder through relative paths: the alias
+    `@datacalc/core` resolves to `../../../DataCalculator/src/index.ts` (`vite.config.ts`, `tsconfig.json`).
+    Nothing is installed, published or fetched.
+  - The handler loads the workbook to list its named values and authoring errors as escaped text; the live form
+    and grids run in an opaque-origin frame (`/sandbox/datacalc.html`). Authoring errors render inside the view;
+    only non-UTF-8 or oversized payloads fall back with `handler-error`.
 - **Web pages and charts** (`public/docs/embeds.md`)
   - `text/uri-list`: an `https:` page on another site in a sandboxed frame (no top navigation, no referrer).
   - `application/vnd.google.charts+json`: Google Charts in an opaque-origin frame (`/sandbox/gchart.html`).

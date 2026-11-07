@@ -31,7 +31,7 @@ TOKEN
 
 - Unknown attributes are preserved and ignored.
 - Core names have no `-`. Extensions are vendor-namespaced (`acme-thumbnail`). Do not use `x-`.
-- This reader's extension attributes: `md2-class`, `md2-group`, `md2-default` (§7), `basemap` (maps), `layout` (Graphviz).
+- This reader's extension attributes: `md2-class`, `md2-group`, `md2-default` (§7), `basemap` (maps), `layout` (Graphviz), `tartlet-seed` (music).
 
 **Closer**
 - The first later line equal to TOKEN, byte-exact and case-sensitive, optionally followed by spaces or tabs.
@@ -148,6 +148,8 @@ BIG
 | `plotly` | `application/vnd.plotly.v1+json` |
 | `vega-lite`, `vegalite` | `application/vnd.vegalite.v5+json` |
 | `geojson` | `application/geo+json` |
+| `tartlet` | `text/vnd.tartlet` |
+| `datacalc` | `text/vnd.datacalc` |
 | `ts`, `js`, `python`, `bash`, `rust`, `go`, … | code view in Monaco |
 
 - Fences have no resource behind them, so no *Load…* button. Network-dependent fences draw only once the origin is allowed globally.
@@ -185,6 +187,8 @@ BIG
 | `application/vnd.google.charts+json` | Google Charts (network, waits) |
 | `text/uri-list` | Embedded page in a sandboxed iframe (network, waits) |
 | `application/geo+json` | MapLibre map (network, waits) |
+| `text/vnd.tartlet` | Tartlet music sketch with a player, sandboxed |
+| `text/vnd.datacalc`, `application/vnd.datacalc+json` | Live DataCalculator workbook (form, grids), sandboxed |
 | `text/css` with `rel="stylesheet"` | Document styles |
 | anything else | Fallback stub (shown, not dropped) |
 
@@ -208,6 +212,16 @@ BIG
   - `"width": "container"` fills the page.
 - Google Charts: JSON `{chartType, data (first row = labels), options}`. Until drawn, a data table shows. Needs `www.gstatic.com`.
 - Both Plotly and Vega-Lite run sandboxed with no network, and parse JSON as data only.
+
+**Calculators (DataCalculator)**
+- Text syntax (`text/vnd.datacalc`, fence `datacalc`):
+  - `input name: type = default { min: …, max: …, required }` for adjustable values.
+  - `name = formula` for derived values; formulas are pure (no script, no I/O).
+  - `view form(inputs…) -> outputs…`, `view table(Sheet: cols…)`, `view value(name)`. Without views, a form is generated.
+- Sheets (`sheet S { key id: string; col: type; computed = formula }`) need rows, which only the JSON form carries:
+  `{"datacalc":"1.0","params":{…},"sheets":{"S":{"columns":{…},"rows":[…]}}}` as `application/vnd.datacalc+json`.
+- Authoring errors are shown inside the calculator; only non-UTF-8 or oversized payloads give `handler-error`.
+- Input values are session state and are not written back to the document.
 
 **Maps**
 - GeoJSON (RFC 7946), positions `[lon, lat]`. A Feature, a bare geometry or a collection are all accepted.
@@ -266,6 +280,9 @@ BIG
   - `application/vnd.plotly.v1+json`
   - `application/vnd.vegalite.v5+json`
   - `application/vnd.google.charts+json`
+  - `text/vnd.tartlet`
+  - `text/vnd.datacalc`
+  - `application/vnd.datacalc+json`
 
 ## 9. Security invariants
 
@@ -289,7 +306,8 @@ BIG
 8. Put `alternate` and `describedby` resources right after their target. Give images a `describedby`.
 9. Use inline data for charts (no `url`). Use `title` and `filename` for locked and fallback legibility, and expect them to be treated as untrusted.
 10. Do not use raw HTML, inline `$math$`, or image links in prose for rendering. Use resources and fences instead.
-11. Validate with `m2 validate file.md` (diagnostics like `file:LINE: missing-type`).
+11. For interactive calculators, use `text/vnd.datacalc` (or JSON when sheets need rows) instead of describing an app.
+12. Validate with `m2 validate file.md` (diagnostics like `file:LINE: missing-type`).
 
 **Minimal examples**
 
@@ -311,3 +329,9 @@ VAULT
 <<<REMOTE type="text/csv" encoding="uri" title="Planets"
 data/planets.csv
 REMOTE
+
+<<<CALC type="text/vnd.datacalc" title="Tip"
+input bill: number = 40
+input tipRate: percent = 15%
+total = bill * (1 + tipRate)
+CALC
