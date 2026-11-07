@@ -1,203 +1,178 @@
-# [Markdown2](https://md2.cognotik.com/)
+# Markdown2
 
-**Markdown, plus one idea:** you can embed opaque resources that declare their type and encoding, and those resources can nest inside each other.
+**Markdown that can carry anything, without breaking anything.**
 
-This repository contains the Markdown2 specification and its reference implementation:
+Markdown2 is ordinary Markdown plus one idea. A document can hold *resources*: pieces of content that say what they are and how to open them, and that can contain further resources. With that single addition, a plain text file can hold diagrams, charts, data tables, maps, images, attachments and encrypted sections. It still reads cleanly in any Markdown editor, and it still degrades gracefully when something cannot be shown.
 
-- **The specification:** [`idea.md`](idea.md), Working Draft 0.2.
-- **The reference parser and handler runtime:** framework-free TypeScript packages that run in Node, Deno, Bun, workers and browsers.
-- **The reader and editor:** an installable, offline-capable PWA.
-- **The conformance suite:** language-neutral fixtures that any implementation can run.
+This folder contains the specification and a reference reader. The reader is an app that runs in the browser, works offline and can be installed.
 
-The reference implementation is *a* realisation of the spec, not the spec. If the code and `idea.md` disagree, `idea.md` wins, and the disagreement is a bug. Ambiguities in the spec are logged in [`spec-issues.md`](spec-issues.md) rather than resolved silently in code.
+---
 
-## The format in one example
+## A little background
 
-A resource starts with `<<<`, a terminator token you choose, and some attributes. It ends at the first line that holds just that token:
+Markdown succeeded because it is just text. You can write it in any editor, email it, put it under version control, and read it even when nothing renders it. That is why READMEs, notes apps, wikis, chat tools and AI assistants all use it.
 
-```text
-<<<NOTE type="text/plain" title="A note"
-Anything at all stays opaque here.
-# This is not a heading, and ``` is not a fence.
-NOTE
-```
+But real documents are rarely just text. They need a diagram, a table of figures, a chart, a screenshot, an attached spreadsheet, or a paragraph only some readers should see. Markdown has no answer for any of these, so every tool invented its own:
 
-Every resource answers three questions:
+- images are *links* to files kept somewhere else, and they break when the document moves
+- diagrams hide in code blocks that only some tools know how to draw
+- metadata lives in a "frontmatter" block that each tool reads differently
+- attachments and private sections are not possible at all
 
-| Attribute  | Question                              | Example              |
-|------------|---------------------------------------|----------------------|
-| `type`     | What are these bytes?                 | `image/svg+xml`      |
-| `encoding` | How do I obtain them?                 | `base64 gzip`        |
-| `rel`      | What is this to its parent document?  | `attachment`         |
+The result is many slightly incompatible dialects, each locked to the tool that invented it.
 
-Attachments, embedded images, compressed assets, diagrams, remote resources, frontmatter, nested documents and encrypted sections all follow from this one primitive. None of them is new syntax:
+Markdown2 does not add a dozen features to fix this. It adds **one general mechanism** and lets the features follow from it.
+
+---
+
+## The idea
+
+A resource looks like this inside an ordinary Markdown document:
 
 ```text
-<<<VAULT type="text/markdown" encoding="base64 age" title="Q3 notes"
-YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdCBk…
-VAULT
+The network layout is shown below.
+
+<<<TOPOLOGY type="image/svg+xml" encoding="base64 gzip" title="Network topology"
+H4sIAAAAAAAAA+2YW2/bNhTH3/0pBL7…
+TOPOLOGY
 ```
 
-A few rules hold everywhere:
+It answers three questions, and keeps them separate:
 
-- **Opacity.** Nothing inside a resource is interpreted until its terminator. Nothing needs escaping.
-- **No sniffing.** The declared type is authoritative. `image/jpg` is not `image/jpeg`.
-- **Fail closed.** A malformed, unterminated or undecodable resource becomes a `failed` node. Its bytes never leak into the prose.
-- **No implicit authority.** Opening a document never grants network, filesystem or key access. Encrypted and `uri` resources stay `locked` until the user acts.
-- **Graceful degradation.** Older Markdown readers see legible text. Unsupported resources are shown, never dropped.
+| Question | Answered by | Example |
+|---|---|---|
+| *What is this?* | `type` | an SVG image, a CSV table, a Markdown document |
+| *How do I get to it?* | `encoding` | unpack base64, decompress, decrypt, fetch from an address |
+| *What is it to this document?* | `rel` | shown inline, data about the document, an attachment, a description of the previous image |
 
-Read [`idea.md`](idea.md) for the full specification, or open the PWA for a live tour.
+The word after `<<<` (here `TOPOLOGY`) is a closing word the author chooses. Everything up to the line that repeats it is kept exactly as written and is never treated as Markdown. Nothing inside needs escaping, so you can paste in a whole file, a block of code or another document unchanged.
 
-## Repository layout
+A resource can itself be a Markdown document, and that document can contain resources. Nesting works without any extra rules.
 
-```text
-markdown2/
-├─ packages/
-│  ├─ core/                 types, limits, static state precedence, tree serialiser
-│  ├─ micromark-extension/  resource construct, commitment, frontmatter, wrapper
-│  ├─ mdast/                from/to mdast, node identity
-│  ├─ parser/               public parse() API
-│  ├─ decoders/             utf-8, base64, gzip, uri, age; pipeline; quotas
-│  ├─ runtime/              handler registry, grants, recursive render, fallback
-│  ├─ handlers/             images, SVG, Markdown, JSON, YAML, math, Mermaid, …
-│  ├─ codemirror/           editor language support
-│  ├─ conformance/          fixtures, JSON Schema, runner
-│  └─ cli/                  the m2 command
-├─ apps/
-│  └─ pwa/                  Vite + Preact reader and editor
-├─ docs/                    architecture, ADRs, API reference
-├─ idea.md                  the specification, Draft 0.2
-├─ plan.md                  the implementation plan
-└─ spec-issues.md           ambiguities found during implementation
-```
+### What falls out of one primitive
 
-Dependencies point one way only, from `core` up to the app and CLI. The `core`, `parser` and `decoders` packages have no DOM dependency.
+Because type, encoding and relationship are independent, many things that would normally be separate features are just combinations:
 
-## Getting started
+- **Embedded images and attachments**: an image or a PDF, base64-encoded, travelling inside the file.
+- **Compression**: a large diagram compressed so it takes a fraction of the space.
+- **Diagrams, charts and maps**: a resource whose type the reader knows how to draw.
+- **Linked data**: a resource whose "encoding" is an address. The table lives in a separate file and is loaded only when you agree.
+- **Frontmatter**: the familiar `---` block is simply shorthand for a metadata resource.
+- **Encrypted sections**: a nested document whose encoding includes decryption. Unlocking it reveals a whole sub-document, with its own images, tables and further locked sections.
+- **Two-person rules**: a resource encrypted twice, to two different groups, opens only when both have granted access.
 
-Requirements: **Node 22 LTS** and **pnpm 9**.
+---
 
-```bash
-pnpm install
-pnpm build        # build every package and the app
-pnpm test         # unit tests and the conformance suite
-```
+## The principles, in plain language
 
-To work on the PWA:
+Markdown2 is opinionated about safety and honesty. These rules are the heart of the design:
 
-```bash
-pnpm --filter pwa dev
-```
+1. **A resource is what it says it is.** The reader never guesses from the content. A file declared as an image is never treated as a web page, even if it looks like one. Common slips such as `image/jpg` instead of `image/jpeg` get a "did you mean?" hint, never a silent correction.
+2. **Nothing is silently dropped.** If the reader cannot open something, it still shows a labelled placeholder with the title, type, size and the reason it could not be shown.
+3. **Opening a document grants nothing.** Reading a file never fetches from the internet, reads your disk or uses your keys on its own. Each of those needs your permission, per resource, and permission never spreads from one resource to the ones inside it.
+4. **Broken means closed.** If a resource is damaged, truncated or mistyped, it becomes a "failed" placeholder. Its contents never spill into the text, so a missing line can never dump ciphertext or private data into your view.
+5. **Old tools keep working.** Ordinary Markdown is valid Markdown2. A Markdown2 document opened in an older editor still shows all of its prose, and bulky binary content can be wrapped so older previews hide it.
+6. **Locked is not invisible.** You can always see *that* something is locked, what it is called and roughly how big it is. Only its contents are protected.
 
-End-to-end tests run in Chromium, Firefox and WebKit through Playwright:
+---
 
-```bash
-pnpm exec playwright install
-pnpm --filter pwa test:e2e
-```
+## The reader
 
-## Using the parser
+The reference reader is a browser app that can be installed like a desktop application and works offline.
 
-```ts
-import { parse } from '@markdown2/parser';
+### Writing and reading
 
-const doc = parse(source);
+- **Three views**: *Write* (the source), *Split* (source and result side by side, updating as you type) and *Read* (the finished document). Switch with Ctrl+1, Ctrl+2 and Ctrl+3.
+- **Open and save** with Ctrl+O and Ctrl+S, or drag a file in. A document can also be opened from a web address. Documents from other sites are opened only after you confirm, and are not kept automatically.
+- **Help pages** inside the app show each feature as a live example.
 
-for (const node of doc.resources) {
-  console.log(node.id, node.resource.type, node.structuralError ?? 'ok');
-}
-```
+### What it can draw
 
-Parsing never runs a decoder. Decode state is computed separately, in two steps:
+| Content | Shown as |
+|---|---|
+| Text, Markdown, JSON, YAML | Formatted text or a nested document |
+| Images, including SVG | Pictures. Scripts in SVG never run |
+| CSV and TSV data | Live tables you can sort, filter and resize, with columns you can hide |
+| Mermaid, Graphviz, WaveDrom | Flowcharts, graphs, timing diagrams and register maps |
+| TeX and MathML | Typeset mathematics |
+| Plotly, Vega-Lite, Google Charts | Interactive charts |
+| GeoJSON | Interactive maps |
+| X3D and VRML | 3D scenes |
+| Program code | A read-only code viewer with highlighting |
+| A web address list | An embedded page in an isolated frame |
 
-- `staticState()` from `@markdown2/core` applies steps 1–3 of the spec's state precedence (structural error, unknown decoder, unmet capability) without touching the payload.
-- `@markdown2/decoders` runs the streaming pipeline for runnable resources, with byte quotas enforced while each stage produces output.
+Ordinary Markdown tables get the same sort, filter and resize controls as CSV data. Many of these also work from familiar code blocks such as `mermaid`, `math` or `csv`, so existing documents benefit without changes.
 
-Handler selection is an exact lookup on the declared type, keyed by capability × media type.
+Every drawing runs in an isolated box with no access to the rest of the page or your data.
 
-## The command line
+### Staying in control
 
-The `m2` CLI parses, validates and dumps trees:
+Each resource that needs something from you shows its own buttons:
 
-```bash
-m2 parse notes.md       # print the parse tree
-m2 validate notes.md    # report structural errors and diagnostics
-m2 tree notes.md        # print the normalised conformance tree as JSON
-m2 render notes.md      # render to HTML
-```
+- **Unlock…** asks for a password or key to open an encrypted section. Keys are kept in memory only, and **Forget keys** clears them at once. After one unlock, the reader can offer to try the same key on other locked sections, and lists them before it does anything.
+- **Load…** fetches linked content, once, for that resource only.
+- **Remote…** sets the list of web sites you trust for maps, embedded pages and similar content. Content that needs the network waits until you allow it, and shows something useful in the meantime: a map lists its places, a chart shows its data as a table.
+- **Save** and **Save raw** store a resource's contents or its original bytes. The reader never gives a saved file a name that would make it run or open as a web page unless you confirm.
 
-Diagnostics name the line, the error code and the resource:
+### Styling
 
-```text
-notes.md:1: missing-type [0]: Resource OOPS: missing-type
-```
+Documents can suggest their own look with ordinary CSS, including choices for the reader, such as a *Light* or *Dark* theme, or a *Summary mode* switch that hides the detail. The reader always has the final word:
 
-`m2 render` is also the reference for server-side `uri` resolution. It refuses loopback, link-local and private addresses, and re-checks after every redirect.
+- Turn all document styles off with Ctrl+Shift+U.
+- Add your own styles in *My styles*; they take priority.
+- Your choices are remembered by name across documents that offer the same options.
 
-## The reader and editor
+Styles cannot fetch anything from the internet, cannot reach the reader's own controls, and cannot hide a locked or failed placeholder.
 
-The PWA is a reader and editor for Markdown2 documents. It works offline, installs as an app and can open `.md` files from the operating system.
+### Looking inside
 
-- **Layouts:** Write (Ctrl+1), Split (Ctrl+2) with live preview, and Read (Ctrl+3).
-- **Inspector** (Ctrl+.): diagnostics with jump-to-source, every resource with its true state, and style choices. It sits outside the page, so no document can fake or hide it.
-- **Locks:** encrypted and remote resources show a sealed card until you choose *Unlock…*. Keys live in the tab's memory only. **Forget keys** clears them all.
-- **Remote policy:** `uri` resources are locked for every scheme by default. Only you can add sites to the allow list.
-- **Safe saving:** resources save as `.bin` by default. An active extension such as `.html` needs your confirmation.
-- **Opening by URL:** `/?url=/docs/styles.md` opens a document. Other `https:` origins ask first and send no cookies. Documents opened this way are never autosaved over your draft.
+The **inspector** (Ctrl+.) lists every problem found in the document with its line, every resource and its state, and every style sheet the document offers.
 
-Handlers that run third-party code, such as Mermaid, the code viewer, charts and embedded pages, run in sandboxed frames with an opaque origin. SVG is drawn only through `<img>`, and maths is rendered as an inert image.
+---
 
-The built-in help is itself a set of Markdown2 documents, in [`apps/pwa/public/docs/`](apps/pwa/public/docs/). Start with [`index.md`](apps/pwa/public/docs/index.md).
+## Why it is interesting
 
-### Reader extensions
+- **One idea instead of many features.** Most formats grow by adding syntax. Markdown2 adds one primitive and leaves the rest to *handlers* (what can be drawn) and *decoders* (how bytes are obtained). New kinds of content need no change to the format.
+- **Documents that travel whole.** A report can carry its charts, its data, its attachments and its confidential appendix in one text file that survives email, archives and hand-offs.
+- **Privacy that is part of the document.** Different readers can see different depths of the same file, and that is decided by keys, not by a server or an access list.
+- **Safety by default.** The rules come from long experience with web browsers and email: no guessing about content types, no automatic network access, no silent failure. They are built into the format rather than added afterwards.
+- **Honest degradation.** Whether you open a file in this reader, an older Markdown editor or a plain text editor, you still get the words.
+- **Simple enough to rebuild.** The specification aims to be small enough that anyone can implement it correctly from the text alone, in any language. The reader here is *one* implementation of it, not the definition.
+- **Friendly to AI assistants.** Language models already write Markdown. A short reference for agents lets them produce diagrams, tables and charts in a form any tool can check, while fitting into ordinary text.
 
-Some features of the PWA go beyond the spec and are deliberately not part of the format:
+---
 
-- **Document styles.** Resources with `type="text/css"` and `rel="stylesheet"`, grouped with `md2-group`, `md2-default` and `md2-class`. The spec defines no `stylesheet` relationship (§10), so these are vendor conventions. Styles are scoped to their own document, cannot fetch, and can be switched off with **Ctrl+Shift+U**.
-- **Fence aliases.** Fenced `mermaid`, `math` and language-named code blocks select handlers as compatibility aliases (§7.2). They never change the parse tree.
-- **Extra handlers.** `text/uri-list` embeds and `application/vnd.google.charts+json` charts. Both wait for permission before reaching the network.
+## Who might find it useful
 
-A document that relies on them still reads correctly in any other Markdown2 reader.
+- **Technical writers and engineers**, for runbooks and guides with diagrams inside numbered steps, timing charts and data tables, all in one versionable file.
+- **Researchers and analysts**, for reports whose charts and tables carry their own data, so readers can sort, filter and explore instead of squinting at a screenshot.
+- **Teams handling sensitive material**, for documents where an appendix is encrypted to finance, a section to legal, and the summary is open to everyone.
+- **Teachers and students**, for notes that mix prose, mathematics, diagrams and 3D models without a heavy authoring tool.
+- **Anyone handing over a document**, who needs to send one file and know it will arrive with everything in it.
+- **People working with AI assistants**, who want generated output that is richer than plain text but still safe and checkable.
+- **Tool builders**, who want a well-defined, safe way to embed rich content in Markdown instead of inventing yet another dialect.
 
-## Conformance
-
-The conformance suite in [`packages/conformance`](packages/conformance) covers categories A–H of §12 of the spec. Each case is:
-
-- a source document, `*.md`
-- an expected normalised tree, `*.tree.json`, valid against the published JSON Schema
-
-The fixtures are language-neutral. Implementations in other languages can run them without any code from this repository. A conforming parser must pass every case in categories A–E, G and H. Category F is informative.
-
-Every MUST and SHOULD in the spec has a requirement ID, such as `R-4.1-commit`. [`docs/traceability.md`](docs/traceability.md) maps each ID to its tests, and CI fails if a MUST has none.
-
-## Security
-
-The security model follows §11 of the spec. In particular:
-
-- No rendering path leads from a failed, locked or unsupported payload to prose HTML. Property-based tests enforce this.
-- Encryption decoders never run without a user action. Grants are scoped to a node and its payload digest, and never propagate to children.
-- Byte quotas are enforced while bytes are produced, so a gzip bomb is aborted mid-stream.
-- YAML is loaded with a safe schema and never instantiates tags.
-- The PWA ships with a strict CSP, Trusted Types and COOP `same-origin`.
-
-Browsers cannot see IP addresses during `fetch`, so the SSRF rules apply to the CLI and server-side renderers. The PWA relies on locked-by-default resources, user policy, CORS and CSP `connect-src`.
-
-Please report vulnerabilities privately to the maintainers rather than in a public issue.
+---
 
 ## Status
 
-This is an implementation of **Working Draft 0.2**. The format may still change. See [`plan.md`](plan.md) for milestones and scope.
+Markdown2 is a **working draft (0.2)**. The core idea has been reviewed from several angles and is stable, but details may still change. A few of the content types the reader uses are widely used names that are not yet formally registered; these are marked as provisional in the specification. Questions found while building the reader are recorded openly rather than quietly decided in code.
 
-Out of scope for 0.2:
+---
 
-- the Viewer API companion specification (a pragmatic subset is implemented internally)
-- decoder profiles beyond `age`, such as `gpg`, `zstd` and `br`
-- same-document references, deferred by the spec
-- collaborative editing and sync
+## Read more
 
-## Contributing
+| Document | What it is |
+|---|---|
+| [`idea.md`](idea.md) | The Markdown2 specification itself |
+| [`style.md`](style.md) | The companion specification for styling documents with CSS |
+| [`MARKDOWN2.md`](MARKDOWN2.md) | A compact reference for authors and AI agents |
+| [`spec-issues.md`](spec-issues.md) | Open questions found while building the reader |
+| [`plan.md`](plan.md) | How the reference reader was planned |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | How to report problems, ask questions or help |
 
-- Behaviour is defined by the spec. A change in behaviour starts with a reference to the section it implements.
-- If the spec is ambiguous, add an entry to `spec-issues.md`, choose the most fail-closed reading, mark the code with the issue ID and add a fixture.
-- Every change needs passing tests on Node and all three browser engines, an updated traceability table where relevant, and a changeset.
-- No new `any`, and no ESLint or type errors.
+The project lives at [github.com/SimiaCryptus/Markdown2](https://github.com/SimiaCryptus/Markdown2). Bug reports, questions about the specification, documents that break things, and implementations in other languages are all welcome.
+
+---
+
+*In one sentence:* Markdown2 is Markdown with embeddable, nestable, clearly labelled content. Everything else is just a matter of what your reader knows how to show.

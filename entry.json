@@ -1,7 +1,7 @@
 {
     "id": "Markdown2",
     "title": "Markdown2",
-    "description": "Markdown evolved: CommonMark plus one primitive, opaque typed resources that declare their encoding and nest. Includes the Working Draft 0.2 specification, a reference TypeScript parser and handler runtime, a conformance suite, and an offline-capable reader and editor PWA.",
+    "pitch": "Markdown evolved: CommonMark plus one primitive, opaque typed resources that declare their encoding and nest. Includes the Working Draft 0.2 specification, a reference TypeScript parser and handler runtime, a conformance suite, and an offline-capable reader and editor PWA.",
     "tags": [
         "markdown",
         "specification",
