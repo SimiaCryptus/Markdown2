@@ -18,11 +18,19 @@ import { escapeHtml } from './html.js';
  *   input cannot trigger deep recursion or quadratic work.
  *
  * Not supported (rendered as text): reference links, HTML blocks.
+ *
+ * Rendering itself is synchronous. The async entry points only await the
+ * fenced-code presentation hook, before rendering, in document order.
  */
 
 export interface MarkdownOptions {
   /** Render a fenced code block. Defaults to escaped `<pre><code>`. */
   fence?: (info: string, body: string) => Promise<string>;
+}
+
+export interface MarkdownSyncOptions {
+  /** Render a fenced code block synchronously. Defaults to escaped `<pre><code>`. */
+  fence?: (info: string, body: string) => string;
 }
 
 const MAX_NESTING = 32;
@@ -791,15 +799,20 @@ function renderInline(src: string, depth: number, allowLinks: boolean): string {
 
 // ------------------------------------------------------------------ render
 
-const defaultFence = (info: string, body: string): Promise<string> => {
+type CodeBlock = Extract<Block, { t: 'code' }>;
+/** Presentation of one fenced code block, already decided. */
+type FenceLookup = (b: CodeBlock) => string;
+
+/** Default presentation of fenced code: escaped `pre > code.language-x` (style.md §4.1). */
+export function defaultFenceHtml(info: string, body: string): string {
   const lang = info.split(/\s+/)[0] ?? '';
   const cls = lang === '' ? '' : ` class="language-${escapeHtml(lang)}"`;
-  return Promise.resolve(`<pre><code${cls}>${escapeHtml(body)}</code></pre>`);
-};
+  return `<pre><code${cls}>${escapeHtml(body)}</code></pre>`;
+}
 
-type FenceFn = (info: string, body: string) => Promise<string>;
+const defaultFence = (info: string, body: string): Promise<string> => Promise.resolve(defaultFenceHtml(info, body));
 
-async function renderBlock(b: Block, fence: FenceFn, tight: boolean): Promise<string> {
+function renderBlock(b: Block, fence: FenceLookup, tight: boolean): string {
   switch (b.t) {
     case 'p': {
       const html = renderInline(b.text, 0, true);
@@ -810,14 +823,13 @@ async function renderBlock(b: Block, fence: FenceFn, tight: boolean): Promise<st
     case 'hr':
       return '<hr>';
     case 'code':
-      return b.fenced ? await fence(b.info, b.body) : `<pre><code>${escapeHtml(b.body)}</code></pre>`;
+      return b.fenced ? fence(b) : `<pre><code>${escapeHtml(b.body)}</code></pre>`;
     case 'quote':
-      return `<blockquote>\n${await renderBlocks(b.children, fence, false)}\n</blockquote>`;
+      return `<blockquote>\n${renderBlocks(b.children, fence, false)}\n</blockquote>`;
     case 'list': {
       const tag = b.ordered ? 'ol' : 'ul';
       const startAttr = b.ordered && b.start !== 1 ? ` start="${b.start}"` : '';
-      const items: string[] = [];
-      for (const it of b.items) items.push(`<li>${await renderBlocks(it, fence, b.tight)}</li>`);
+      const items = b.items.map((it) => `<li>${renderBlocks(it, fence, b.tight)}</li>`);
       return `<${tag}${startAttr}>\n${items.join('\n')}\n</${tag}>`;
     }
     case 'table': {
@@ -832,10 +844,26 @@ async function renderBlock(b: Block, fence: FenceFn, tight: boolean): Promise<st
   }
 }
 
-async function renderBlocks(blocks: readonly Block[], fence: FenceFn, tight: boolean): Promise<string> {
-  const out: string[] = [];
-  for (const b of blocks) out.push(await renderBlock(b, fence, tight));
-  return out.join('\n');
+function renderBlocks(blocks: readonly Block[], fence: FenceLookup, tight: boolean): string {
+  return blocks.map((b) => renderBlock(b, fence, tight)).join('\n');
+}
+
+/** Every fenced code block, in document (render) order. */
+function fencedBlocks(blocks: readonly Block[], out: CodeBlock[] = []): CodeBlock[] {
+  for (const b of blocks) {
+    if (b.t === 'code') {
+      if (b.fenced) out.push(b);
+    } else if (b.t === 'quote') {
+      fencedBlocks(b.children, out);
+    } else if (b.t === 'list') {
+      for (const it of b.items) fencedBlocks(it, out);
+    }
+  }
+  return out;
+}
+
+function proseLines(text: string): string[] {
+  return text.split(/\r?\n/).map(expandTabs);
 }
 
 /** One top-level block. `heading` is set for headings, so sections can be derived (style.md §4.2). */
@@ -846,20 +874,42 @@ export interface RenderedBlock {
   line?: number;
 }
 
+function toRendered(blocks: readonly Block[], fence: FenceLookup): RenderedBlock[] {
+  return blocks.map((b) => {
+    const html = renderBlock(b, fence, false);
+    const at = b.line === undefined ? {} : { line: b.line };
+    return b.t === 'h' ? { html, heading: b.level, ...at } : { html, ...at };
+  });
+}
+
 /** Render Markdown prose into its top-level blocks. Everything is escaped. */
 export async function renderMarkdownBlocks(text: string, opts: MarkdownOptions = {}): Promise<RenderedBlock[]> {
-  const lines = text.split(/\r?\n/).map(expandTabs);
+  const blocks = parseBlocks(proseLines(text), 0);
   const fence = opts.fence ?? defaultFence;
-  const out: RenderedBlock[] = [];
-  for (const b of parseBlocks(lines, 0)) {
-    const html = await renderBlock(b, fence, false);
-    const at = b.line === undefined ? {} : { line: b.line };
-    out.push(b.t === 'h' ? { html, heading: b.level, ...at } : { html, ...at });
-  }
-  return out;
+  const done = new Map<CodeBlock, string>();
+  for (const b of fencedBlocks(blocks)) done.set(b, await fence(b.info, b.body));
+  return toRendered(blocks, (b) => done.get(b) ?? defaultFenceHtml(b.info, b.body));
+}
+
+/** Synchronous {@link renderMarkdownBlocks}, for callers that cannot await. */
+export function renderMarkdownBlocksSync(text: string, opts: MarkdownSyncOptions = {}): RenderedBlock[] {
+  const fence = opts.fence ?? defaultFenceHtml;
+  return toRendered(parseBlocks(proseLines(text), 0), (b) => fence(b.info, b.body));
 }
 
 /** Render Markdown prose to an HTML fragment. Everything is escaped. */
 export async function renderMarkdown(text: string, opts: MarkdownOptions = {}): Promise<string> {
   return (await renderMarkdownBlocks(text, opts)).map((b) => b.html).join('\n');
+}
+
+/** Synchronous {@link renderMarkdown}. */
+export function renderMarkdownSync(text: string, opts: MarkdownSyncOptions = {}): string {
+  return renderMarkdownBlocksSync(text, opts)
+    .map((b) => b.html)
+    .join('\n');
+}
+
+/** Render inline Markdown only (no blocks, no paragraph wrapper). Everything is escaped. */
+export function renderMarkdownInline(src: string): string {
+  return renderInline(src, 0, true);
 }

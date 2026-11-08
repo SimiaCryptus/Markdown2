@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      The example runs under a strict policy, to show that the library needs no inline
+      script, no eval and no inline styles. Constructed stylesheets are not subject to
+      style-src. connect-src allows https: for `uri` resources the user permits; frame-src
+      allows https: for embedded pages the user permits.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>markdown2.js · Markdown2 for your own pages</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./example.js"></script>
+  </head>
+  <body>
+    <header class="top">
+      <div class="wrap">
+        <p class="kicker">markdown2.js <span id="version" class="pill">…</span></p>
+        <h1>Markdown, plus opaque, typed, nestable resources. In your page.</h1>
+        <p class="lede">
+          A drop-in replacement for <a href="https://marked.js.org" rel="noopener noreferrer">marked</a> that
+          carries data, drawings, encrypted sections and whole documents inside Markdown, and a live view that
+          asks before it unlocks or fetches anything. Everything on this page is running, not pictured.
+        </p>
+        <ul class="proof" aria-label="Measured on this page, just now">
+          <li><strong id="proof-checks">…</strong><span>security checks passed, live, in your browser</span></li>
+          <li><strong id="proof-speed">…</strong><span>to parse 600 resources, measured here</span></li>
+          <li><strong>0</strong><span>inline scripts, eval calls or inline styles: this page runs under a strict CSP</span></li>
+          <li><strong>1</strong><span>ES module. <code>age</code> encryption loads only when a key is used</span></li>
+        </ul>
+        <nav class="toc" aria-label="On this page">
+          <span class="toc-label">Showcase</span>
+          <a href="#play">Playground</a>
+          <a href="#lab">Resource lab</a>
+          <a href="#nest">Matryoshka</a>
+          <a href="#redteam">Red team</a>
+          <a href="#extend">Your handlers</a>
+          <a href="#speed">Speed</a>
+          <span class="toc-label">Embed</span>
+          <a href="#install">Install</a>
+          <a href="#sync">marked.parse()</a>
+          <a href="#async">async</a>
+          <a href="#element">Custom element</a>
+          <a href="#umd">Classic script</a>
+          <a href="#security">Guarantees</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <h2 class="part">Part one · What it can do</h2>
+
+      <!-- ============================================================ playground -->
+      <section id="play" class="card">
+        <h2>1. Playground: one primitive, eight ways</h2>
+        <p>
+          Pick a scene and then break it. The view on the right is <code>mount()</code>: a shadow root with its own
+          permission controls. The panel is your app, driving the same view through its API. The demo passphrase is
+          <code>markdown2</code>.
+        </p>
+        <div id="presets" class="chips" aria-label="Scenes"></div>
+        <p id="preset-blurb" class="blurb"></p>
+        <div class="live-grid">
+          <div class="live-editor">
+            <label for="live-src" class="label">Source</label>
+            <textarea id="live-src" spellcheck="false" autocapitalize="off" wrap="off">Preparing encrypted examples…</textarea>
+            <div class="row">
+              <button id="reset-src" type="button" class="btn">Reset scene</button>
+              <span id="play-time" class="note"></span>
+            </div>
+          </div>
+          <div class="live-view">
+            <span class="label">View · <code>mount()</code></span>
+            <div id="live-view"></div>
+          </div>
+          <aside class="panel" aria-label="App controls">
+            <h3>Your app</h3>
+            <label class="label" for="policy">Consent policy</label>
+            <select id="policy" class="select">
+              <option value="ask">Ask the reader (defaultConsent)</option>
+              <option value="once">Auto: remote once, batches yes, keys ask</option>
+              <option value="deny">Deny everything, silently</option>
+            </select>
+            <label class="check"><input type="checkbox" id="doc-styles" checked /> Document styles</label>
+            <div class="row">
+              <button id="forget" type="button" class="btn">Forget keys</button>
+              <button id="app-unlock" type="button" class="btn">Unlock with the app's key</button>
+            </div>
+            <form id="allow-form" class="row">
+              <input id="allow-input" type="url" placeholder="https://www.openstreetmap.org" aria-label="Origin to trust" required />
+              <button class="btn" type="submit">Trust origin</button>
+            </form>
+            <p id="allow-error" class="err" hidden></p>
+            <h4>Trusted origins</h4>
+            <ul id="origins" class="list"></ul>
+
+            <div class="tabs" role="tablist" aria-label="Inspector">
+              <button type="button" class="tab" role="tab" aria-selected="true" data-tab="res">Resources <small id="live-diags"></small></button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="xray">X-ray</button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="log">Consent log</button>
+            </div>
+            <div data-pane="res" role="tabpanel">
+              <div class="table-wrap">
+                <table id="res-table">
+                  <thead><tr><th>Resource</th><th>State</th><th>Actions</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div data-pane="xray" role="tabpanel" hidden>
+              <h4>Tokens from <code>lexer()</code></h4>
+              <ol id="xray" class="xray"></ol>
+              <h4>Diagnostics</h4>
+              <ul id="play-diags" class="diags"></ul>
+            </div>
+            <div data-pane="log" role="tabpanel" hidden>
+              <ol id="consent-log" class="list log"><li class="muted">No requests yet.</li></ol>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ============================================================ lab -->
+      <section id="lab" class="card">
+        <h2>2. Resource lab: pack anything</h2>
+        <p>
+          Type any payload, then pick a type and an encoding stack. The lab builds the resource with
+          <code>resource()</code>, compresses or encrypts it in your browser, and chooses a terminator that cannot
+          collide with your payload. In Markdown2 nothing ever needs escaping: the block simply ends at a word that
+          doesn't appear inside it.
+        </p>
+        <div class="row" id="lab-samples" aria-label="Samples"></div>
+        <div class="lab-grid">
+          <form id="lab-form" class="lab-controls">
+            <label for="lab-input" class="label">Payload</label>
+            <textarea id="lab-input" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="field-row">
+              <label>
+                <span class="label">Type</span>
+                <select id="lab-type" class="select">
+                  <option>text/plain</option>
+                  <option>text/markdown</option>
+                  <option>application/json</option>
+                  <option>text/csv</option>
+                  <option>image/svg+xml</option>
+                  <option>text/vnd.wavedrom</option>
+                  <option>model/x-from-the-future</option>
+                </select>
+              </label>
+              <label>
+                <span class="label">Encoding</span>
+                <select id="lab-enc" class="select">
+                  <option value="none">none (as written)</option>
+                  <option value="base64">base64</option>
+                  <option value="gzip">base64 gzip</option>
+                  <option value="age">base64 age (encrypted)</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-row">
+              <label><span class="label">Title</span><input id="lab-title" class="input" value="Packed in the lab" /></label>
+              <label><span class="label">Terminator</span><input id="lab-token" class="input" value="DATA" /></label>
+            </div>
+            <div id="lab-pass-row" hidden>
+              <label><span class="label">Passphrase</span><input id="lab-pass" class="input" value="markdown2" autocomplete="off" /></label>
+            </div>
+          </form>
+          <div class="lab-out">
+            <span class="label">Markdown2 source</span>
+            <pre class="lab-src"><code id="lab-src"></code></pre>
+            <p id="lab-stats" class="note"></p>
+            <div class="row">
+              <button id="lab-copy" type="button" class="btn">Copy</button>
+              <button id="lab-send" type="button" class="btn">Open in the playground</button>
+              <a id="lab-download" class="btn" download="resource.md" href="#">Download .md</a>
+            </div>
+          </div>
+          <div>
+            <span class="label">Rendered · locked until you say so</span>
+            <div id="lab-view"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ nest -->
+      <section id="nest" class="card">
+        <h2>3. Matryoshka: documents all the way down</h2>
+        <p>
+          A <code>text/markdown</code> resource is a whole document, with its own prose, resources and styles. Drag
+          the slider to nest them. Then tick the box to give every level the <em>same</em> terminator and watch the
+          outermost document close at the first matching line. That is why you choose your own.
+        </p>
+        <div class="row controls">
+          <label class="check" for="nest-depth">Depth <output id="nest-depth-out">5</output></label>
+          <input id="nest-depth" type="range" min="1" max="16" value="5" />
+          <label class="check"><input type="checkbox" id="nest-same" /> Same terminator at every level</label>
+        </div>
+        <p id="nest-stats" class="note"></p>
+        <div id="out-nest" class="md2-surface out scroll"></div>
+        <details>
+          <summary>Source</summary>
+          <pre><code id="nest-src"></code></pre>
+        </details>
+      </section>
+
+      <!-- ============================================================ red team -->
+      <section id="redteam" class="card">
+        <h2>4. Red team: try to break it</h2>
+        <p>
+          Nine hostile documents, each rendered by <code>marked.parse()</code>. Before the HTML reaches the page, it
+          is parsed into an inert <code>&lt;template&gt;</code> and checked in your browser: no script, frame or object
+          elements, no event handlers, no <code>javascript:</code> URLs, no remote loads, no leaked payloads. These
+          are not screenshots of tests. They ran just now.
+        </p>
+        <p id="rt-summary" class="verdict">Running…</p>
+        <div id="rt-grid" class="rt-grid"></div>
+      </section>
+
+      <!-- ============================================================ extend -->
+      <section id="extend" class="card">
+        <h2>5. Handlers you write</h2>
+        <p>
+          A handler turns bytes of one declared type into a view. These four took a few lines each: a palette drawn
+          as SVG, a Unicode sparkline, an INI file as a table, and a shout. The last resource feeds the sparkline
+          something that isn't a number. The handler throws, and the resource fails closed instead of breaking
+          the page.
+        </p>
+        <pre><code>const md2 = new Marked({
+  handlers: [{
+    types: ['text/x-sparkline'],
+    render: (bytes) =&gt; {
+      const xs = new TextDecoder().decode(bytes).trim().split(/\s+/).map(Number);
+      if (xs.some(Number.isNaN)) throw new Error('not a number');
+      return `&lt;p class="spark"&gt;${core.escapeHtml(toBars(xs))}&lt;/p&gt;`;
+    },
+  }],
+  hooks: { preprocess: (md) =&gt; md.replaceAll('{{today}}', new Date().toDateString()) },
+  walkTokens: (token) =&gt; { counts[token.type]++; },
+});</code></pre>
+        <div id="out-extend" class="md2-surface out"></div>
+        <h3>Tokens from <code>lexer()</code></h3>
+        <p class="note">Markdown2 tokens are runs of prose and opaque resources. <span id="walk-counts"></span></p>
+        <pre><code id="tokens"></code></pre>
+      </section>
+
+      <!-- ============================================================ speed -->
+      <section id="speed" class="card">
+        <h2>6. Speed</h2>
+        <p>
+          Each section of the generated document holds prose, a JSON record, a base64 string and a small CSV
+          table. Every resource is parsed, decoded, handled and escaped. The time is the median of three runs,
+          after a warm-up.
+        </p>
+        <div class="row" id="speed-buttons">
+          <button type="button" class="btn" data-n="100">100 sections</button>
+          <button type="button" class="btn" data-n="1000">1,000 sections</button>
+          <button type="button" class="btn" data-n="5000">5,000 sections</button>
+        </div>
+        <div class="table-wrap">
+          <table id="speed-table" class="data-table">
+            <thead>
+              <tr><th>Sections</th><th>Resources</th><th>Source</th><th>HTML out</th><th>Median</th><th>Throughput</th><th></th></tr>
+            </thead>
+            <tbody><tr class="muted"><td colspan="7">Choose a size.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <h2 class="part">Part two · Put it in your page</h2>
+
+      <section id="install" class="card">
+        <h2>7. Import it</h2>
+        <p>One ES module. Nothing to install; <code>age</code> encryption loads only when a key is used.</p>
+        <pre><code>&lt;div id="out"&gt;&lt;/div&gt;
+&lt;script type="module"&gt;
+  import { marked, defaultCss } from 'https://md2.cognotik.com/lib/markdown2.js';
+
+  // Optional: the default look for the Markdown2 styling tree.
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(defaultCss);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+
+  // Exactly like marked: a string in, escaped HTML out.
+  document.querySelector('#out').innerHTML = marked.parse(source);
+&lt;/script&gt;</code></pre>
+        <p class="note">
+          The same names as marked: <code>marked()</code>, <code>marked.parse</code>, <code>parseInline</code>,
+          <code>use</code>, <code>setOptions</code>, <code>getDefaults</code>, <code>defaults</code>,
+          <code>lexer</code>, <code>parser</code>, <code>walkTokens</code>, <code>Marked</code>, <code>Lexer</code>,
+          <code>Parser</code>, <code>hooks</code>, <code>async</code> and <code>silent</code>. Raw HTML is never passed
+          through, so the output is safe for <code>innerHTML</code>.
+        </p>
+      </section>
+
+      <section id="sync" class="card">
+        <h2>8. Drop-in: <code>marked.parse(source)</code></h2>
+        <p>
+          Synchronous, like marked. Everything that can be decoded without waiting is decoded: prose, tables,
+          <code>base64</code>, JSON, CSV, SVG, WaveDrom. A <code>gzip</code> resource needs the asynchronous pipeline,
+          so here it shows a fallback with <code>requires-async</code>. Locked resources stay locked.
+        </p>
+        <p id="sync-note" class="note"></p>
+        <div id="out-sync" class="md2-surface out" aria-live="polite">Rendering…</div>
+        <details>
+          <summary>Source and diagnostics</summary>
+          <pre><code id="src-sync"></code></pre>
+          <h3>Diagnostics (<code>onDiagnostics</code>)</h3>
+          <ul id="diag-sync" class="diags"></ul>
+        </details>
+      </section>
+
+      <section id="async" class="card">
+        <h2>9. <code>await marked.parse(source, { async: true })</code></h2>
+        <p>
+          The same document through the full pipeline: the compressed nested document now decodes. The remote
+          resource is still locked, because rendering never grants network access.
+        </p>
+        <pre><code>const html = await marked.parse(source, { async: true });</code></pre>
+        <div id="out-async" class="md2-surface out">Rendering…</div>
+        <details>
+          <summary>Diagnostics</summary>
+          <ul id="diag-async" class="diags"></ul>
+        </details>
+      </section>
+
+      <section id="mount-api" class="card">
+        <h2>10. The live view API: <code>mount()</code></h2>
+        <p>
+          The playground above is this API and nothing more. Consent dialogs sit outside the document, where its
+          styles cannot reach, and your app can answer them itself or skip them by supplying keys and origins.
+        </p>
+        <pre><code>const view = mount(el, source, {
+  consent: (request) =&gt; defaultConsent(request),   // or your own policy, as in the playground
+  allowOrigins: [],                                 // nothing trusted up front
+  onChange: (state) =&gt; renderMyPanel(state),
+});
+await view.update(nextSource);
+await view.unlock(id, { kind: 'passphrase', value: '…' });
+await view.load(id, 'once');
+await view.allowOrigin('https://www.openstreetmap.org');
+view.setDocumentStyles(false);
+await view.download(id, 'decoded');
+await view.forget();</code></pre>
+      </section>
+
+      <section id="element" class="card">
+        <h2>11. Or no script of your own: <code>&lt;markdown2-view&gt;</code></h2>
+        <p>
+          Call <code>defineElement()</code> once, then write Markdown2 straight into the page. The source sits in a
+          <code>&lt;script type="text/markdown"&gt;</code>, so the browser never parses <code>&lt;&lt;&lt;TOKEN</code> as a tag.
+        </p>
+        <pre><code>&lt;markdown2-view theme="auto" allow-origins=""&gt;
+  &lt;script type="text/markdown"&gt;
+    # Hello from a custom element
+    …
+  &lt;/script&gt;
+&lt;/markdown2-view&gt;</code></pre>
+        <div class="row" aria-label="Theme">
+          <span class="label inline">theme=</span>
+          <button type="button" class="btn small theme-btn" data-theme="auto" aria-pressed="true">auto</button>
+          <button type="button" class="btn small theme-btn" data-theme="light" aria-pressed="false">light</button>
+          <button type="button" class="btn small theme-btn" data-theme="dark" aria-pressed="false">dark</button>
+        </div>
+        <markdown2-view id="demo-element" theme="auto">
+          <script type="text/markdown">
+            # Hello from a custom element
+
+            This view was declared in HTML. It has its own **shadow root**, its own permission controls and the
+            default look.
+
+            <<<NOTE type="text/plain" title="Opaque payload"
+            Nothing here is Markdown: # not a heading, *not emphasis*.
+            NOTE
+
+            <<<MAP type="text/uri-list" title="OpenStreetMap: Greenwich"
+            https://www.openstreetmap.org/export/embed.html?bbox=-0.0106%2C51.4747%2C0.0057%2C51.4813&layer=mapnik
+            MAP
+
+            The map above waits until you choose *Load from www.openstreetmap.org…*.
+          </script>
+        </markdown2-view>
+      </section>
+
+      <section id="umd" class="card">
+        <h2>12. Without modules</h2>
+        <p>A classic script defines the global <code>markdown2</code>, with the same API.</p>
+        <pre><code>&lt;script src="https://md2.cognotik.com/lib/markdown2.umd.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  document.getElementById('out').innerHTML = markdown2.marked.parse(source);
+  markdown2.defineElement();
+&lt;/script&gt;</code></pre>
+      </section>
+
+      <section id="security" class="card">
+        <h2>13. What the library guarantees</h2>
+        <p class="note">Section 4 checks several of these on every page load.</p>
+        <ul class="guarantees">
+          <li><strong>Escaped output.</strong> Raw HTML is never passed through; links are limited to safe schemes.</li>
+          <li><strong>Nothing implicit.</strong> No key is used and nothing is fetched or framed without a grant from the user or your app.</li>
+          <li><strong>Per resource.</strong> Grants are bound to one resource's payload and never inherited by nested resources.</li>
+          <li><strong>No sniffing.</strong> The declared type picks the handler; a server's <code>Content-Type</code> is ignored.</li>
+          <li><strong>Fail closed.</strong> Broken, locked or unknown resources show a labelled stub, never their bytes.</li>
+          <li><strong>Inert images.</strong> SVG and WaveDrom are drawn through <code>&lt;img&gt;</code>, where scripts never run.</li>
+          <li><strong>Contained styles.</strong> Document CSS cannot fetch, and in <code>mount()</code> it is scoped to its own document.</li>
+          <li><strong>Safe saving.</strong> A document cannot pick an active file extension without consent.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Markdown2 is an open draft. Specification, reader and this library:
+        <a href="https://github.com/SimiaCryptus/Markdown2" rel="noopener noreferrer">github.com/SimiaCryptus/Markdown2</a>.
+      </p>
+    </footer>
+  </body>
+</html>
