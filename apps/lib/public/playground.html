@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Playground · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./playground.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Interactive Playground: one primitive, thirteen scenes</h1>
+        <p class="lede">
+          Pick a scene and then break it. The center view is <code>mount()</code> with <code>sandboxHandlers()</code>:
+          a shadow root with its own permission controls. The panel on the right is your app, driving the same view through its API.
+          The demo passphrase is <code>markdown2</code>.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section id="play" class="card">
+        <div id="presets" class="chips" aria-label="Scenes"></div>
+        <p id="preset-blurb" class="blurb"></p>
+        <div class="live-grid">
+          <div class="live-editor">
+            <label for="live-src" class="label">Source</label>
+            <textarea id="live-src" spellcheck="false" autocapitalize="off" wrap="off">Preparing encrypted examples…</textarea>
+            <div class="row">
+              <button id="reset-src" type="button" class="btn">Reset scene</button>
+              <span id="play-time" class="note"></span>
+            </div>
+          </div>
+          <div class="live-view">
+            <span class="label">View · <code>mount()</code></span>
+            <div id="live-view"></div>
+          </div>
+          <aside class="panel" aria-label="App controls">
+            <h3>Your app</h3>
+            <label class="label" for="policy">Consent policy</label>
+            <select id="policy" class="select">
+              <option value="ask">Ask the reader (defaultConsent)</option>
+              <option value="once">Auto: remote once, batches yes, keys ask</option>
+              <option value="deny">Deny everything, silently</option>
+            </select>
+            <label class="check"><input type="checkbox" id="doc-styles" checked /> Document styles</label>
+            <div class="row">
+              <button id="forget" type="button" class="btn">Forget keys</button>
+              <button id="app-unlock" type="button" class="btn">Unlock with the app's key</button>
+            </div>
+            <form id="allow-form" class="row">
+              <input id="allow-input" type="url" placeholder="https://www.openstreetmap.org" aria-label="Origin to trust" required />
+              <button class="btn" type="submit">Trust origin</button>
+            </form>
+            <p id="allow-error" class="err" hidden></p>
+            <h4>Trusted origins</h4>
+            <ul id="origins" class="list"></ul>
+
+            <div class="tabs" role="tablist" aria-label="Inspector">
+              <button type="button" class="tab" role="tab" aria-selected="true" data-tab="res">Resources <small id="live-diags"></small></button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="xray">X-ray</button>
+              <button type="button" class="tab" role="tab" aria-selected="false" data-tab="log">Consent log</button>
+            </div>
+            <div data-pane="res" role="tabpanel">
+              <div class="table-wrap">
+                <table id="res-table">
+                  <thead><tr><th>Resource</th><th>State</th><th>Actions</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+            <div data-pane="xray" role="tabpanel" hidden>
+              <h4>Tokens from <code>lexer()</code></h4>
+              <ol id="xray" class="xray"></ol>
+              <h4>Diagnostics</h4>
+              <ul id="play-diags" class="diags"></ul>
+            </div>
+            <div data-pane="log" role="tabpanel" hidden>
+              <ol id="consent-log" class="list log"><li class="muted">No requests yet.</li></ol>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Next: <a href="./lab.html">Resource Lab &amp; Matryoshka →</a> ·
+        <a href="./index.html">Back to overview</a>
+      </p>
+    </footer>
+  </body>
+</html>

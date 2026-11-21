@@ -36,7 +36,7 @@ export type {
   TokensList,
 } from './marked.js';
 
-export { mount, defineElement, defaultConsent, dedent, downloadBytes } from './view.js';
+export { mount, defineElement, defaultConsent, dedent, downloadBytes, installFrameHost } from './view.js';
 export type {
   ConsentAnswer,
   ConsentHandler,
@@ -52,12 +52,13 @@ export {
   imageHandler,
   jsonHandler,
   pageHandler,
+  sandboxHandlers,
   tableHandler,
   textHandler,
   wavedromHandler,
   yamlHandler,
 } from './handlers.js';
-export type { Md2Handler, Md2HandlerContext, RemoteNeed } from './handlers.js';
+export type { Md2Handler, Md2HandlerContext, RemoteNeed, SandboxFrameKind, SandboxHandlerOptions } from './handlers.js';
 
 export { ageDecoder, createBrowserUriPolicy, createRegistry, diagnoseRemoteUri, isKeyGrant, resolveRemoteUri } from './decoders.js';
 export type { KeyGrant, ResolveUriOptions, UriDiagnosis } from './decoders.js';

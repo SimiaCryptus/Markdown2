@@ -416,6 +416,71 @@ export function defaultConsent(req: ConsentRequest): Promise<ConsentAnswer> {
   });
 }
 
+// ------------------------------------------------------------------ sandboxed frame host
+
+const MAX_FRAME_HEIGHT = 4000;
+
+function decodeFramePayload(b64: string): string {
+  const bin = atob(b64);
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+function defaultIsDark(root: ParentNode): boolean {
+  if (root instanceof HTMLElement) {
+    const t = root.dataset.md2Theme;
+    if (t === 'dark') return true;
+    if (t === 'light') return false;
+  }
+  return typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+/**
+ * Wire up opaque-origin sandboxed frames (`iframe.m2-frame`) inside `root`.
+ * Called automatically by `mount()` and `<markdown2-view>`; call it directly
+ * when rendering `sandboxHandlers()` output through `marked.parse()`.
+ * Returns a cleanup function.
+ */
+export function installFrameHost(root: ParentNode = document, isDark?: () => boolean): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const darkCheck = isDark ?? (() => defaultIsDark(root));
+  const onMessage = (e: MessageEvent): void => {
+    if (e.source === null || typeof e.data !== 'object' || e.data === null) return;
+    let frame: HTMLIFrameElement | null = null;
+    for (const f of root.querySelectorAll<HTMLIFrameElement>('iframe.m2-frame')) {
+      if (f.contentWindow === e.source) {
+        frame = f;
+        break;
+      }
+    }
+    if (!frame) return;
+    const data = e.data as Record<string, unknown>;
+    const host = frame.closest<HTMLElement>('.m2-frame-host');
+    if (data.type === 'm2-ready') {
+      if (frame.dataset.m2Sent !== undefined) return;
+      frame.dataset.m2Sent = '';
+      frame.contentWindow?.postMessage(
+        {
+          type: 'm2-render',
+          source: decodeFramePayload(frame.dataset.m2Payload ?? ''),
+          lang: frame.dataset.m2Lang,
+          dark: darkCheck(),
+        },
+        '*',
+      );
+    } else if (data.type === 'm2-size' && typeof data.height === 'number' && Number.isFinite(data.height)) {
+      frame.style.height = `${Math.max(16, Math.min(MAX_FRAME_HEIGHT, Math.ceil(data.height)))}px`;
+      host?.setAttribute('data-m2-ready', '');
+    } else if (data.type === 'm2-error') {
+      const msg = typeof data.message === 'string' ? data.message.slice(0, 300) : 'could not render';
+      host?.setAttribute('data-m2-error', msg);
+    }
+  };
+  window.addEventListener('message', onMessage);
+  return () => {
+    window.removeEventListener('message', onMessage);
+  };
+}
+
 // ------------------------------------------------------------------ the view
 
 class View implements Markdown2View {
@@ -424,6 +489,7 @@ class View implements Markdown2View {
   private readonly host: HTMLElement;
   private readonly surface: HTMLElement;
   private readonly cascade: CSSStyleSheet | null;
+  private readonly stopFrames: () => void;
   private readonly registry: DecoderRegistry;
   private readonly handlerList: Md2Handler[];
   private readonly handlerByType: Map<string, Md2Handler>;
@@ -495,6 +561,7 @@ class View implements Markdown2View {
     this.surface.setAttribute('part', 'surface');
     if (opts.theme === 'light' || opts.theme === 'dark') this.surface.dataset.md2Theme = opts.theme;
     this.root.append(this.surface);
+    this.stopFrames = installFrameHost(this.surface);
     this.ready = this.render();
   }
 
@@ -813,6 +880,7 @@ class View implements Markdown2View {
   destroy(): void {
     this.destroyed = true;
     this.ctl?.abort();
+    this.stopFrames();
     this.host.remove();
   }
 }

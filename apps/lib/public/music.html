@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Music (Tartlet) · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./music.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Music: Tartlet Sketches</h1>
+        <p class="lede">
+          Strudel-compatible mini-notation parsed in a closed language — never evaluated as JavaScript.
+          Synthesized locally with zero network requests, a master-bus safety limiter, and audio only when you press play.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section class="card">
+        <h2>1. A multi-track groove (resource &amp; fence)</h2>
+        <div class="meta-strip">
+          <span class="media-tag">text/vnd.tartlet</span>
+          <span class="media-tag">```tartlet</span>
+          <span class="media-tag">offline synthesis</span>
+          <span class="media-tag">opaque-origin sandbox</span>
+        </div>
+        <p>
+          Each <code>$:</code> line is a track playing in sync; <code>setcpm(92/4)</code> sets the tempo.
+          Press play inside either player, or edit the mini-notation on the left to reshape the pattern:
+        </p>
+        <div class="split-demo">
+          <div class="split-editor tall">
+            <label for="groove-src" class="label">Source</label>
+            <textarea id="groove-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="groove-reset" type="button" class="btn small">Reset</button>
+              <span id="groove-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view · press play to listen</span>
+            <div id="groove-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Deterministic random variations (<code>tartlet-seed</code>)</h2>
+        <div class="meta-strip">
+          <span class="media-tag">tartlet-seed="take-1"</span>
+          <span class="media-tag">? drops &amp; sometimesBy</span>
+        </div>
+        <p>
+          Random choices such as <code>?0.4</code> or <code>sometimesBy</code> are deterministically seeded so
+          every reader hears the same take. Switch the <code>tartlet-seed</code> attribute to audition another take:
+        </p>
+        <div class="row" id="seed-buttons" aria-label="Tartlet seed">
+          <span class="label inline">tartlet-seed=</span>
+          <button type="button" class="btn small" data-seed="take-1" aria-pressed="false">take-1</button>
+          <button type="button" class="btn small" data-seed="take-2" aria-pressed="true">take-2</button>
+          <button type="button" class="btn small" data-seed="take-3" aria-pressed="false">take-3</button>
+          <button type="button" class="btn small" data-seed="midnight" aria-pressed="false">midnight</button>
+        </div>
+        <div class="split-demo">
+          <div class="split-editor">
+            <label for="seed-src" class="label">Source</label>
+            <textarea id="seed-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="seed-reset" type="button" class="btn small">Reset</button>
+              <span id="seed-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view</span>
+            <div id="seed-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Safety by design</h2>
+        <ul class="guarantees">
+          <li><strong>Closed language.</strong> Sketches are parsed into an AST, never passed to <code>eval</code> or <code>Function</code>.</li>
+          <li><strong>Sandboxed.</strong> The player runs in an opaque-origin frame with no access to your page or keys.</li>
+          <li><strong>Zero network.</strong> All sounds are synthesized locally; external <code>sample(...)</code> URLs are ignored with a diagnostic.</li>
+          <li><strong>Safety limiter.</strong> Audio passes through a non-bypassable limiter, and steady 3–30 Hz pulsing warns before playing.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Next: <a href="./charts.html">Charts (Plotly, Vega-Lite &amp; Google Charts) →</a> ·
+        <a href="./index.html">Back to overview</a>
+      </p>
+    </footer>
+  </body>
+</html>

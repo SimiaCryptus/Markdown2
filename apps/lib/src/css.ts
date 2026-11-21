@@ -71,6 +71,22 @@ md2-detail { margin-top: 0.2rem; font: 0.75rem/1.5 var(--md2-mono); }
 .m2-load-slot:empty { display: none; }
 .m2-prose-image::before { content: '🖼 '; }
 .m2-grid-note { font-style: italic; color: var(--md2-muted); }
+/* sandboxed frames: diagrams, maths, music, charts, maps, 3D, calculators, code */
+.m2-frame { display: block; width: 100%; height: 0; border: 0; background: transparent; }
+.m2-frame-host[data-m2-ready] .m2-frame-fallback { display: none; }
+pre.m2-code[data-m2-ready] { padding: 0; overflow: hidden; }
+pre.m2-code[data-m2-ready] > code { display: block; }
+.m2-diagram .m2-frame-fallback, .m2-math-block .m2-frame-fallback, .m2-calc .m2-frame-fallback { margin: 0; }
+.m2-x3d .m2-frame-fallback, .m2-chart .m2-frame-fallback { margin: 0; max-height: 16em; overflow: auto; }
+.m2-x3d .m2-frame, .m2-geo .m2-frame, .m2-chart .m2-frame { border-radius: 8px; }
+.m2-frame-host[data-m2-error]::after {
+  content: '⚠ ' attr(data-m2-error);
+  display: block; margin-top: 0.4rem; font: 0.74rem/1.4 var(--md2-ui); color: var(--md2-bad);
+}
+.m2-chart-note { margin: 0 0 0.6rem; font: 0.78rem/1.4 var(--md2-ui); color: var(--md2-muted); }
+.m2-geo-bounds { margin: 0 0 0.6rem; font: 0.74rem/1.4 var(--md2-mono); color: var(--md2-muted); }
+.m2-geo-data td:first-child { color: var(--md2-muted); font-variant-numeric: tabular-nums; }
+.m2-math { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 `;
 
 /** UA baseline (style.md Appendix A) plus the default look, layered so pages and documents can override it. */

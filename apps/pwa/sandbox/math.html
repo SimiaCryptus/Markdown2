@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque-origin sandbox for MathJax (TeX and MathML). MathJax is bundled from this site;
+      nothing is fetched from the web. The SVG is shown through <img> so nothing in it can run.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src 'self' ws:"
+    />
+    <title>Math</title>
+    <style>
+      html, body { margin: 0; background: transparent; overflow: hidden; }
+      #root { width: 100%; text-align: center; padding: 0.4rem 0; overflow-x: auto; }
+      #root img { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; }
+      :root[data-dark] #root img { filter: invert(0.9); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/sandbox/math.ts"></script>
+  </body>
+</html>

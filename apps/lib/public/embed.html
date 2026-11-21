@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Embed Guide, Custom Handlers &amp; Speed · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./embed.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Embed Guide, Custom Handlers &amp; Speed</h1>
+        <p class="lede">
+          Drop-in <code>marked.parse()</code> (sync &amp; async), the <code>mount()</code> live view API,
+          <code>&lt;markdown2-view&gt;</code>, classic UMD script, custom handlers/hooks, and live parsing benchmarks.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section id="install" class="card">
+        <h2>1. Import it (ES module)</h2>
+        <p>One ES module. Nothing to install; <code>age</code> encryption and rich sandbox frames load only when used.</p>
+        <pre><code>&lt;div id="out"&gt;&lt;/div&gt;
+&lt;script type="module"&gt;
+  import { marked, defaultCss } from 'https://md2.cognotik.com/lib/markdown2.js';
+
+  // Optional: the default look for the Markdown2 styling tree.
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(defaultCss);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+
+  // Exactly like marked: a string in, escaped HTML out.
+  document.querySelector('#out').innerHTML = marked.parse(source);
+&lt;/script&gt;</code></pre>
+        <p class="note">
+          The same names as marked: <code>marked()</code>, <code>marked.parse</code>, <code>parseInline</code>,
+          <code>use</code>, <code>setOptions</code>, <code>getDefaults</code>, <code>defaults</code>,
+          <code>lexer</code>, <code>parser</code>, <code>walkTokens</code>, <code>Marked</code>, <code>Lexer</code>,
+          <code>Parser</code>, <code>hooks</code>, <code>async</code> and <code>silent</code>. Raw HTML is never passed
+          through, so the output is safe for <code>innerHTML</code>.
+        </p>
+      </section>
+
+      <section id="sync" class="card">
+        <h2>2. Drop-in: <code>marked.parse(source)</code></h2>
+        <p>
+          Synchronous, like marked. Everything that can be decoded without waiting is decoded: prose, tables,
+          <code>base64</code>, JSON, CSV, SVG, WaveDrom. A <code>gzip</code> resource needs the asynchronous pipeline,
+          so here it shows a fallback with <code>requires-async</code>. Locked resources stay locked.
+        </p>
+        <p id="sync-note" class="note"></p>
+        <div id="out-sync" class="md2-surface out" aria-live="polite">Rendering…</div>
+        <details>
+          <summary>Source and diagnostics</summary>
+          <pre><code id="src-sync"></code></pre>
+          <h3>Diagnostics (<code>onDiagnostics</code>)</h3>
+          <ul id="diag-sync" class="diags"></ul>
+        </details>
+      </section>
+
+      <section id="async" class="card">
+        <h2>3. <code>await marked.parse(source, { async: true })</code></h2>
+        <p>
+          The same document through the full pipeline: the compressed nested document now decodes. The remote
+          resource is still locked, because rendering never grants network access.
+        </p>
+        <pre><code>const html = await marked.parse(source, { async: true });</code></pre>
+        <div id="out-async" class="md2-surface out">Rendering…</div>
+        <details>
+          <summary>Diagnostics</summary>
+          <ul id="diag-async" class="diags"></ul>
+        </details>
+      </section>
+
+      <section id="mount-api" class="card">
+        <h2>4. Live view API: <code>mount()</code> &amp; <code>sandboxHandlers()</code></h2>
+        <p>
+          Pass <code>handlers: sandboxHandlers()</code> to enable Mermaid, Graphviz, MathJax, Tartlet, DataCalculator,
+          Plotly, Vega-Lite, Google Charts, GeoJSON Maps, X3D and Monaco code inside any <code>mount()</code> view.
+        </p>
+        <pre><code>import { mount, defaultConsent, sandboxHandlers } from 'https://md2.cognotik.com/lib/markdown2.js';
+
+const view = mount(el, source, {
+  handlers: sandboxHandlers(),                      // rich sandboxed viewers
+  consent: (request) =&gt; defaultConsent(request),    // or your own policy
+  allowOrigins: [],                                 // nothing trusted up front
+  onChange: (state) =&gt; renderMyPanel(state),
+});
+await view.update(nextSource);
+await view.unlock(id, { kind: 'passphrase', value: '…' });
+await view.load(id, 'once');
+await view.allowOrigin('https://www.openstreetmap.org');
+view.setDocumentStyles(false);
+await view.download(id, 'decoded');
+await view.forget();</code></pre>
+      </section>
+
+      <section id="element" class="card">
+        <h2>5. Declarative custom element: <code>&lt;markdown2-view&gt;</code></h2>
+        <p>
+          Call <code>defineElement('markdown2-view', { handlers: sandboxHandlers() })</code> once, then write
+          Markdown2 straight into the page inside a <code>&lt;script type="text/markdown"&gt;</code>.
+        </p>
+        <div class="row" aria-label="Theme">
+          <span class="label inline">theme=</span>
+          <button type="button" class="btn small theme-btn" data-theme="auto" aria-pressed="true">auto</button>
+          <button type="button" class="btn small theme-btn" data-theme="light" aria-pressed="false">light</button>
+          <button type="button" class="btn small theme-btn" data-theme="dark" aria-pressed="false">dark</button>
+        </div>
+        <markdown2-view id="demo-element" theme="auto">
+          <script type="text/markdown">
+            # Hello from a custom element
+
+            This view was declared in HTML. It has its own **shadow root**, its own permission controls and the
+            default look.
+
+            <<<NOTE type="text/plain" title="Opaque payload"
+            Nothing here is Markdown: # not a heading, *not emphasis*.
+            NOTE
+
+            <<<MAP type="text/uri-list" title="OpenStreetMap: Greenwich"
+            https://www.openstreetmap.org/export/embed.html?bbox=-0.0106%2C51.4747%2C0.0057%2C51.4813&layer=mapnik
+            MAP
+
+            The map above waits until you choose *Load from www.openstreetmap.org…*.
+          </script>
+        </markdown2-view>
+      </section>
+
+      <section id="extend" class="card">
+        <h2>6. Custom handlers, hooks &amp; <code>walkTokens</code></h2>
+        <p>
+          A handler turns bytes of one declared type into a view. These four took a few lines each: a palette drawn
+          as SVG, a Unicode sparkline, an INI file as a table, and a shout. The last sparkline throws — and fails closed.
+        </p>
+        <pre><code>const md2 = new Marked({
+  handlers: [{
+    types: ['text/x-sparkline'],
+    render: (bytes) =&gt; {
+      const xs = new TextDecoder().decode(bytes).trim().split(/\s+/).map(Number);
+      if (xs.some(Number.isNaN)) throw new Error('not a number');
+      return `&lt;p class="spark"&gt;${core.escapeHtml(toBars(xs))}&lt;/p&gt;`;
+    },
+  }],
+  hooks: { preprocess: (md) =&gt; md.replaceAll('{{today}}', new Date().toDateString()) },
+  walkTokens: (token) =&gt; { counts[token.type]++; },
+});</code></pre>
+        <div id="out-extend" class="md2-surface out"></div>
+        <h3>Tokens from <code>lexer()</code></h3>
+        <p class="note">Markdown2 tokens are runs of prose and opaque resources. <span id="walk-counts"></span></p>
+        <pre><code id="tokens"></code></pre>
+      </section>
+
+      <section id="umd" class="card">
+        <h2>7. Classic script (without modules)</h2>
+        <p>A classic script defines the global <code>markdown2</code>, with the same API.</p>
+        <pre><code>&lt;script src="https://md2.cognotik.com/lib/markdown2.umd.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  document.getElementById('out').innerHTML = markdown2.marked.parse(source);
+  markdown2.defineElement();
+&lt;/script&gt;</code></pre>
+      </section>
+
+      <section id="speed" class="card">
+        <h2>8. Speed benchmark</h2>
+        <p>
+          Each section of the generated document holds prose, a JSON record, a base64 string and a small CSV
+          table. Every resource is parsed, decoded, handled and escaped. Median of three runs, after a warm-up.
+        </p>
+        <div class="row" id="speed-buttons">
+          <button type="button" class="btn" data-n="100">100 sections</button>
+          <button type="button" class="btn" data-n="1000">1,000 sections</button>
+          <button type="button" class="btn" data-n="5000">5,000 sections</button>
+        </div>
+        <div class="table-wrap">
+          <table id="speed-table" class="data-table">
+            <thead>
+              <tr><th>Sections</th><th>Resources</th><th>Source</th><th>HTML out</th><th>Median</th><th>Throughput</th><th></th></tr>
+            </thead>
+            <tbody><tr class="muted"><td colspan="7">Choose a size.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        <a href="./index.html">← Back to overview</a> ·
+        <a href="./playground.html">Open playground</a>
+      </p>
+    </footer>
+  </body>
+</html>

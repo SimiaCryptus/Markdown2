@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Resource Lab &amp; Nesting · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./lab.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Resource Lab &amp; Matryoshka Nesting</h1>
+        <p class="lede">
+          Pack any payload with <code>resource()</code>, compress or <code>age</code>-encrypt it in your browser with
+          collision-free terminators, and experiment with deeply nested <code>text/markdown</code> documents.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section id="lab" class="card">
+        <h2>1. Resource lab: pack anything</h2>
+        <p>
+          Type any payload, pick a declared media type and an encoding stack. The lab builds the resource with
+          <code>resource()</code>, compresses or encrypts it in your browser, and picks a terminator that cannot
+          collide with your payload. Nothing ever needs escaping.
+        </p>
+        <div class="row" id="lab-samples" aria-label="Samples"></div>
+        <div class="lab-grid">
+          <form id="lab-form" class="lab-controls">
+            <label for="lab-input" class="label">Payload</label>
+            <textarea id="lab-input" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="field-row">
+              <label>
+                <span class="label">Type</span>
+                <select id="lab-type" class="select">
+                  <option>text/plain</option>
+                  <option>text/markdown</option>
+                  <option>application/json</option>
+                  <option>text/csv</option>
+                  <option>image/svg+xml</option>
+                  <option>text/vnd.wavedrom</option>
+                  <option>text/vnd.mermaid</option>
+                  <option>text/vnd.graphviz</option>
+                  <option>application/x-tex</option>
+                  <option>text/vnd.tartlet</option>
+                  <option>text/vnd.datacalc</option>
+                  <option>model/x-from-the-future</option>
+                </select>
+              </label>
+              <label>
+                <span class="label">Encoding</span>
+                <select id="lab-enc" class="select">
+                  <option value="none">none (as written)</option>
+                  <option value="base64">base64</option>
+                  <option value="gzip">base64 gzip</option>
+                  <option value="age">base64 age (encrypted)</option>
+                </select>
+              </label>
+            </div>
+            <div class="field-row">
+              <label><span class="label">Title</span><input id="lab-title" class="input" value="Packed in the lab" /></label>
+              <label><span class="label">Terminator</span><input id="lab-token" class="input" value="DATA" /></label>
+            </div>
+            <div id="lab-pass-row" hidden>
+              <label><span class="label">Passphrase</span><input id="lab-pass" class="input" value="markdown2" autocomplete="off" /></label>
+            </div>
+          </form>
+          <div class="lab-out">
+            <span class="label">Markdown2 source</span>
+            <pre class="lab-src"><code id="lab-src"></code></pre>
+            <p id="lab-stats" class="note"></p>
+            <div class="row">
+              <button id="lab-copy" type="button" class="btn">Copy</button>
+              <button id="lab-send" type="button" class="btn">Open in the playground</button>
+              <a id="lab-download" class="btn" download="resource.md" href="#">Download .md</a>
+            </div>
+          </div>
+          <div>
+            <span class="label">Rendered · locked until you say so</span>
+            <div id="lab-view"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="nest" class="card">
+        <h2>2. Matryoshka: documents all the way down</h2>
+        <p>
+          A <code>text/markdown</code> resource is a whole document, with its own prose, resources and styles. Drag
+          the slider to nest them up to 16 levels deep. Then tick the box to give every level the <em>same</em>
+          terminator and watch the outermost document close at the first matching line.
+        </p>
+        <div class="row controls">
+          <label class="check" for="nest-depth">Depth <output id="nest-depth-out">5</output></label>
+          <input id="nest-depth" type="range" min="1" max="16" value="5" />
+          <label class="check"><input type="checkbox" id="nest-same" /> Same terminator at every level</label>
+        </div>
+        <p id="nest-stats" class="note"></p>
+        <div id="out-nest" class="md2-surface out scroll"></div>
+        <details>
+          <summary>Source</summary>
+          <pre><code id="nest-src"></code></pre>
+        </details>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Next: <a href="./security.html">Security Red Team &amp; Permissions →</a> ·
+        <a href="./index.html">Back to overview</a>
+      </p>
+    </footer>
+  </body>
+</html>

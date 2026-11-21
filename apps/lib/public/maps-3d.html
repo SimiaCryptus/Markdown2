@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Maps, 3D &amp; Code · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./maps-3d.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Maps (GeoJSON), 3D Scenes (X3D) &amp; Code (Monaco)</h1>
+        <p class="lede">
+          Geographic data on interactive vector tiles, ISO-standard 3D scenes with X_ITE, and read-only
+          syntax-highlighted code resources — each isolated in an opaque-origin sandbox.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section class="card">
+        <h2>1. Interactive GeoJSON maps (MapLibre GL JS + OpenFreeMap)</h2>
+        <div class="meta-strip">
+          <span class="media-tag">application/geo+json</span>
+          <span class="media-tag">```geojson</span>
+          <span class="media-tag">remote: tiles.openfreemap.org</span>
+          <span class="media-tag">basemap="liberty|bright|positron"</span>
+        </div>
+        <p>
+          Map tiles come from <code>tiles.openfreemap.org</code>, so the map waits for permission and lists its
+          features in a table until you click <em>Load from tiles.openfreemap.org…</em>. Choose a basemap style below:
+        </p>
+        <div class="row" id="basemap-buttons" aria-label="Map basemap">
+          <span class="label inline">basemap=</span>
+          <button type="button" class="btn small" data-basemap="liberty" aria-pressed="true">liberty</button>
+          <button type="button" class="btn small" data-basemap="bright" aria-pressed="false">bright</button>
+          <button type="button" class="btn small" data-basemap="positron" aria-pressed="false">positron</button>
+        </div>
+        <div class="split-demo">
+          <div class="split-editor tall">
+            <label for="map-src" class="label">Source</label>
+            <textarea id="map-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="map-reset" type="button" class="btn small">Reset</button>
+              <span id="map-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view · click Load to fetch tiles</span>
+            <div id="map-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Interactive 3D scenes (X3D / X_ITE, offline)</h2>
+        <div class="meta-strip">
+          <span class="media-tag">model/x3d+xml</span>
+          <span class="media-tag">model/x3d-vrml</span>
+          <span class="media-tag">```x3d</span>
+          <span class="media-tag">offline · opaque-origin sandbox</span>
+        </div>
+        <p>
+          Drag to orbit, scroll to zoom. External network textures and <code>Inline</code> worlds are blocked;
+          scenes run completely offline with zero access to the host page.
+        </p>
+        <div class="split-demo">
+          <div class="split-editor tall">
+            <label for="x3d-src" class="label">Source</label>
+            <textarea id="x3d-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="x3d-reset" type="button" class="btn small">Reset</button>
+              <span id="x3d-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view · drag to turn</span>
+            <div id="x3d-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3. Sandboxed code resources (Monaco)</h2>
+        <div class="meta-strip">
+          <span class="media-tag">text/javascript</span>
+          <span class="media-tag">text/x-python</span>
+          <span class="media-tag">application/sql</span>
+          <span class="media-tag">text/css</span>
+        </div>
+        <p>
+          Code declared as an opaque resource never needs fence escaping — even triple backticks or Markdown
+          headings inside the code stay untouched — and renders in a read-only sandboxed Monaco editor.
+        </p>
+        <div class="split-demo">
+          <div class="split-editor">
+            <label for="code-src" class="label">Source</label>
+            <textarea id="code-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="code-reset" type="button" class="btn small">Reset</button>
+              <span id="code-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view</span>
+            <div id="code-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Next: <a href="./calculators.html">Live Calculators (DataCalculator) →</a> ·
+        <a href="./index.html">Back to overview</a>
+      </p>
+    </footer>
+  </body>
+</html>

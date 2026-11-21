@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Security &amp; Permissions · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./security.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Security Red Team, Permissions &amp; Guarantees</h1>
+        <p class="lede">
+          Nine hostile documents tested live in your browser, upfront permission whitelisting for integrating apps,
+          and the complete list of library security guarantees.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section id="redteam" class="card">
+        <h2>1. Red team: try to break it</h2>
+        <p>
+          Nine hostile documents, each rendered by <code>marked.parse()</code>. Before the HTML reaches the page, it
+          is parsed into an inert <code>&lt;template&gt;</code> and checked in your browser: no script, frame or object
+          elements, no event handlers, no <code>javascript:</code> URLs, no remote loads, no leaked payloads.
+        </p>
+        <p id="rt-summary" class="verdict">Running…</p>
+        <div id="rt-grid" class="rt-grid"></div>
+      </section>
+
+      <section id="permissions" class="card">
+        <h2>2. Upfront permission whitelisting</h2>
+        <p>
+          Everything stays fail-closed by default, and integrating pages can whitelist trusted origins, split
+          fetch vs. embed permissions, supply keys, or tune actionable console diagnostics in three ways:
+        </p>
+        <pre><code>// 1. JavaScript options (mount, marked.parse, marked.use, new Marked)
+const view = mount(el, source, {
+  baseUrl: location.href,
+  permissions: {
+    allowOrigins: ['self', 'https://*.example.com'],
+    allowFetch: ['https://cdn.example.com'],
+    allowEmbed: ['https://www.openstreetmap.org'],
+    keys: [{ kind: 'passphrase', value: 'secret' }],
+    logLevel: 'warn', // 'warn' (default) | 'debug' | 'silent'
+  },
+});
+
+// 2. Custom element attributes
+&lt;markdown2-view allow-origins="self https://www.openstreetmap.org" log-level="warn"&gt;…&lt;/markdown2-view&gt;
+
+// 3. Page-level &lt;meta&gt; tag
+&lt;meta name="markdown2-permissions" content="allow-origins self https://example.com; allow-embed https://www.openstreetmap.org" /&gt;</code></pre>
+      </section>
+
+      <section id="security" class="card">
+        <h2>3. What the library guarantees</h2>
+        <ul class="guarantees">
+          <li><strong>Escaped output.</strong> Raw HTML is never passed through; links are limited to safe schemes.</li>
+          <li><strong>Nothing implicit.</strong> No key is used and nothing is fetched or framed without a grant from the user or your app.</li>
+          <li><strong>Per resource.</strong> Grants are bound to one resource's payload and never inherited by nested resources.</li>
+          <li><strong>No sniffing.</strong> The declared type picks the handler; a server's <code>Content-Type</code> is ignored.</li>
+          <li><strong>Fail closed.</strong> Broken, locked or unknown resources show a labelled stub, never their bytes.</li>
+          <li><strong>Inert images.</strong> SVG, WaveDrom, Graphviz and MathJax output is drawn through <code>&lt;img&gt;</code>, where scripts never run.</li>
+          <li><strong>Opaque sandboxes.</strong> Rich viewers (Mermaid, Graphviz, Tartlet, Plotly, Vega-Lite, X3D, DataCalculator, Monaco) run in <code>sandbox="allow-scripts"</code> frames with no <code>allow-same-origin</code>.</li>
+          <li><strong>Contained styles.</strong> Document CSS cannot fetch, and in <code>mount()</code> it is scoped to its own document.</li>
+          <li><strong>Safe saving.</strong> A document cannot pick an active file extension without consent.</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Next: <a href="./embed.html">Embedding Guide, Custom Handlers &amp; Speed →</a> ·
+        <a href="./index.html">Back to overview</a>
+      </p>
+    </footer>
+  </body>
+</html>

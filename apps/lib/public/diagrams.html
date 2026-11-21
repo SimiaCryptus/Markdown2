@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="markdown2-permissions" content="log-level silent" />
+    <meta name="theme-color" content="#1c1a24" />
+    <title>Diagrams · markdown2.js</title>
+    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./example.css" />
+    <script type="module" src="./diagrams.js"></script>
+  </head>
+  <body>
+    <header class="top sub-top">
+      <div class="wrap">
+        <p class="kicker"><a href="./index.html">← markdown2.js</a> <span id="version" class="pill">…</span></p>
+        <h1>Diagrams: Mermaid, Graphviz, WaveDrom &amp; SVG</h1>
+        <p class="lede">
+          Every diagram runs offline, never evaluates user source as JavaScript, and renders either through
+          an inert <code>&lt;img&gt;</code> or an opaque-origin sandboxed frame. Edit any source on the left.
+        </p>
+        <nav class="toc" aria-label="Showcase pages">
+          <span class="toc-label">Start</span>
+          <a href="./index.html">Overview</a>
+          <a href="./playground.html">Playground</a>
+          <span class="toc-label">Rich media</span>
+          <a href="./diagrams.html">Diagrams</a>
+          <a href="./math.html">Math</a>
+          <a href="./music.html">Music</a>
+          <a href="./charts.html">Charts</a>
+          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+          <a href="./calculators.html">Calculators</a>
+          <span class="toc-label">Core &amp; API</span>
+          <a href="./lab.html">Lab &amp; Nesting</a>
+          <a href="./security.html">Security &amp; Permissions</a>
+          <a href="./embed.html">Embed &amp; Speed</a>
+          <a href="../index.html">The reader app →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <p id="error" class="banner" role="alert" hidden></p>
+
+      <section class="card">
+        <h2>1. Mermaid diagrams</h2>
+        <div class="meta-strip">
+          <span class="media-tag">text/vnd.mermaid</span>
+          <span class="media-tag">```mermaid</span>
+          <span class="media-tag">securityLevel: 'strict'</span>
+          <span class="media-tag">opaque-origin sandbox</span>
+        </div>
+        <p>
+          Both fenced <code>```mermaid</code> blocks and opaque <code>text/vnd.mermaid</code> resources render
+          inside an opaque-origin frame with Mermaid's strict security level. Invalid syntax falls back to the source.
+        </p>
+        <div class="split-demo">
+          <div class="split-editor">
+            <label for="mermaid-src" class="label">Source</label>
+            <textarea id="mermaid-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="mermaid-reset" type="button" class="btn small">Reset</button>
+              <span id="mermaid-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view</span>
+            <div id="mermaid-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2. Graphviz (WebAssembly)</h2>
+        <div class="meta-strip">
+          <span class="media-tag">text/vnd.graphviz</span>
+          <span class="media-tag">```dot</span>
+          <span class="media-tag">```graphviz</span>
+          <span class="media-tag">layout="dot|neato|circo|fdp|twopi|..."</span>
+        </div>
+        <p>
+          Compiled to WebAssembly in an opaque-origin frame, with the resulting SVG displayed through
+          <code>&lt;img&gt;</code> so graph <code>URL</code> and <code>href</code> attributes stay inert.
+          Pick a layout engine below to update the <code>layout</code> attribute live:
+        </p>
+        <div class="row" id="gv-engines" aria-label="Graphviz layout engine">
+          <span class="label inline">layout=</span>
+          <button type="button" class="btn small" data-engine="dot" aria-pressed="false">dot</button>
+          <button type="button" class="btn small" data-engine="neato" aria-pressed="true">neato</button>
+          <button type="button" class="btn small" data-engine="circo" aria-pressed="false">circo</button>
+          <button type="button" class="btn small" data-engine="fdp" aria-pressed="false">fdp</button>
+          <button type="button" class="btn small" data-engine="twopi" aria-pressed="false">twopi</button>
+        </div>
+        <div class="split-demo">
+          <div class="split-editor">
+            <label for="gv-src" class="label">Source</label>
+            <textarea id="gv-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="gv-reset" type="button" class="btn small">Reset</button>
+              <span id="gv-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view</span>
+            <div id="gv-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3. WaveDrom timing diagrams &amp; register maps</h2>
+        <div class="meta-strip">
+          <span class="media-tag">text/vnd.wavedrom</span>
+          <span class="media-tag">```wavedrom</span>
+          <span class="media-tag">built-in (sync)</span>
+          <span class="media-tag">JSON5 parsed, never eval'd</span>
+        </div>
+        <p>
+          WaveDrom is built right into <code>markdown2.js</code> (no sandbox frame needed). WaveJSON is parsed
+          as relaxed JSON5 data — never evaluated as JavaScript — and rendered to SVG via <code>&lt;img&gt;</code>.
+        </p>
+        <div class="split-demo">
+          <div class="split-editor">
+            <label for="wave-src" class="label">Source</label>
+            <textarea id="wave-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="wave-reset" type="button" class="btn small">Reset</button>
+              <span id="wave-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view</span>
+            <div id="wave-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>4. Inert SVG images</h2>
+        <div class="meta-strip">
+          <span class="media-tag">image/svg+xml</span>
+          <span class="media-tag">built-in (sync)</span>
+          <span class="media-tag">rendered via &lt;img&gt;</span>
+        </div>
+        <p>
+          SVGs are always rendered through <code>&lt;img src="data:image/svg+xml;base64,..."&gt;</code> and
+          never inlined into the DOM, so embedded <code>&lt;script&gt;</code> or event handlers cannot execute.
+        </p>
+        <div class="split-demo">
+          <div class="split-editor">
+            <label for="svg-src" class="label">Source</label>
+            <textarea id="svg-src" spellcheck="false" autocapitalize="off" wrap="off"></textarea>
+            <div class="row">
+              <button id="svg-reset" type="button" class="btn small">Reset</button>
+              <span id="svg-time" class="note"></span>
+            </div>
+          </div>
+          <div>
+            <span class="label">Live view</span>
+            <div id="svg-view" class="split-view-box"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot wrap">
+      <p>
+        Next: <a href="./math.html">Mathematics (MathJax) →</a> ·
+        <a href="./index.html">Back to overview</a>
+      </p>
+    </footer>
+  </body>
+</html>

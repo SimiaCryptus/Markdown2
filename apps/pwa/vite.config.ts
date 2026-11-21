@@ -58,6 +58,7 @@ export default defineConfig({
         code: here('./sandbox/code.html'),
         mermaid: here('./sandbox/mermaid.html'),
         graphviz: here('./sandbox/graphviz.html'),
+        math: here('./sandbox/math.html'),
         gchart: here('./sandbox/gchart.html'),
         x3d: here('./sandbox/x3d.html'),
         map: here('./sandbox/map.html'),
