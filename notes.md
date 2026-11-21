@@ -1,6 +1,1 @@
-integrate with github - invite the community! https://github.com/SimiaCryptus/Markdown2
-
-add support for data tables: not just markdown tables, but also CSV and TSV. 
-The CSV/TSV can be embedded in the document or linked to an external file. 
-The table can be rendered as a grid, with sortable/hidable columns and filterable rows. rows and columns should be resizable.
-demo it in the help
+Permissions and security are important but the handling here is a huge pain point and integration challenege. Consuming pages and any integrating consumer should be able to whitelist the permissions upfront, and when things do not load, it should contain console logging sufficient to guide a human or agent towards fixing it.

@@ -1,22 +1,40 @@
 import {
+  collectResources,
+  createPermissionPolicy,
   DEFAULT_LIMITS,
+  DID_YOU_MEAN,
   escapeHtml,
   GrantSet,
+  hasHandler,
+  logBlockedFetch,
+  logDecodeFailure,
+  logHandlerError,
+  logLockedKey,
+  logRequiresAsync,
+  logUnsupportedResource,
+  mergePermissions,
   parse as parseDocument,
+  readPagePermissions,
   renderHtml,
   renderMarkdownInline,
   resolveDocument,
+  typeEssence,
   type Decoder,
+  type DecoderRegistry,
   type Diagnostic,
   type DocNode,
   type Document,
   type Limits,
+  type LogLevel,
+  type PermissionPolicy,
+  type PermissionsConfig,
+  type ResolvedResource,
   type ResourceNode,
   type UriPolicy,
 } from '@markdown2/core';
-import { createBrowserUriPolicy, createRegistry } from './decoders.js';
+import { createBrowserUriPolicy, createRegistry, diagnoseRemoteUri } from './decoders.js';
 import { builtinHandlers, coreRegistry, handlerMap, type Md2Handler } from './handlers.js';
-import { renderSyncHtml, resolveSync, type SyncOptions } from './sync.js';
+import { renderSyncHtml, REQUIRES_ASYNC, resolveSync, type SyncNode, type SyncOptions } from './sync.js';
 
 /**
  * A marked.js-compatible API over Markdown2.
@@ -66,8 +84,19 @@ export interface MarkedOptions {
   handlers?: readonly Md2Handler[];
   /** Extra decoders (decoder profiles). */
   decoders?: readonly Decoder[];
-  /** `https:` origins the embedding app trusts for remote content (uri fetches, embedded pages). */
+  /**
+   * Origins the embedding app trusts for remote content (uri fetches, embedded pages).
+   * Supports exact origins (`'https://example.com'`), wildcards (`'https://*.example.com'`),
+   * `'self'`, `'*'`, and explicit `http:` origins (e.g. `'http://localhost:3000'`).
+   */
   allowOrigins?: readonly string[];
+  /**
+   * Upfront permission whitelist (origins, fetch/embed split, `allowHttp`, `allowSameOriginEmbed`,
+   * upfront `keys`, and `logLevel`). Merged with any `<meta name="markdown2-permissions">` in the page.
+   */
+  permissions?: PermissionsConfig;
+  /** Console logging level for blocked permissions and load failures. Default `'warn'`. */
+  logLevel?: LogLevel;
   /** Per-node grants (keys, fetch permission). Only effective with `async: true`. */
   grants?: GrantSet;
   /** Custom `uri` policy. Default in browsers: allowed origins only, no cookies. */
@@ -150,6 +179,7 @@ interface Chain {
   handlers: Md2Handler[];
   decoders: Decoder[];
   allowOrigins: string[];
+  permissions: PermissionsConfig[];
 }
 
 interface Effective {
@@ -161,7 +191,7 @@ interface Effective {
   walkTokens: ((t: Token) => void | Promise<void>)[];
   handlers: Md2Handler[];
   decoders: Decoder[];
-  origins: Set<string>;
+  policy: PermissionPolicy;
   grants: GrantSet;
   uriPolicy?: UriPolicy;
   baseUrl: URL | null;
@@ -174,21 +204,64 @@ interface Effective {
 const REPORT = '\nPlease report this to https://github.com/SimiaCryptus/Markdown2.';
 const noop = (): undefined => undefined;
 
-function normaliseOrigin(o: string): string | null {
-  try {
-    const u = new URL(o);
-    return u.protocol === 'https:' ? u.origin : null;
-  } catch {
-    return null;
-  }
-}
-
-function toUrl(u: string | URL | undefined): URL | null {
+function toUrl(u: string | URL | undefined, policy?: PermissionPolicy): URL | null {
   if (u === undefined) return null;
   try {
     return new URL(String(u));
   } catch {
+    policy?.warn(`Ignored invalid baseUrl "${String(u)}". Pass a full URL such as location.href or "https://example.com/".`);
     return null;
+  }
+}
+
+function logUnloadedResource(
+  node: ResourceNode,
+  state: string,
+  error: string | undefined,
+  detail: string | undefined,
+  registry: DecoderRegistry,
+  handled: ReadonlySet<string>,
+  policy: PermissionPolicy,
+  baseUrl: URL | null,
+): void {
+  if (state === 'locked') {
+    const gated = node.resource.encoding.find((id) => registry.get(id)?.capability !== undefined);
+    if (gated === 'uri') {
+      const rawUri = new TextDecoder().decode(node.resource.payload).trim();
+      const diag = diagnoseRemoteUri(rawUri, baseUrl, { policy });
+      logBlockedFetch(policy, node, rawUri, diag.url?.origin ?? null, diag.reason);
+    } else if (gated !== undefined) {
+      logLockedKey(policy, node, gated, error === 'key-rejected');
+    }
+    return;
+  }
+  if (state === 'unsupported') {
+    if (error === REQUIRES_ASYNC) logRequiresAsync(policy, node);
+    else logUnsupportedResource(policy, node, 'encoding');
+    return;
+  }
+  if (state === 'failed') {
+    logDecodeFailure(policy, node, error ?? 'decode-error', detail);
+    return;
+  }
+  if (
+    state === 'decoded' &&
+    node.rel !== 'metadata' &&
+    node.rel !== 'stylesheet' &&
+    node.rel !== 'attachment' &&
+    !hasHandler(handled, node.resource.type)
+  ) {
+    const essence = typeEssence(node.resource.type);
+    const suggestion = essence !== undefined && Object.hasOwn(DID_YOU_MEAN, essence) ? DID_YOU_MEAN[essence] : undefined;
+    logUnsupportedResource(policy, node, 'type', suggestion);
+  }
+}
+
+function walkSyncNodes(nodes: readonly SyncNode[], visit: (e: Extract<SyncNode, { kind: 'resource' }>) => void): void {
+  for (const n of nodes) {
+    if (n.kind !== 'resource') continue;
+    visit(n);
+    if (n.children) walkSyncNodes(n.children, visit);
   }
 }
 
@@ -247,7 +320,7 @@ function decorate(e: unknown): Error {
 
 /** `Lexer.lex(src)`: Markdown2 tokens (runs of prose and resources). */
 export class Lexer {
-  constructor(private readonly options?: MarkedOptions | null) {}
+  constructor(private readonly options?: MarkedOptions | null) { }
   static lex(src: string, options?: MarkedOptions | null): TokensList {
     return (options ? new Marked(options) : markedInstance).lexer(src);
   }
@@ -258,7 +331,7 @@ export class Lexer {
 
 /** `Parser.parse(tokens)`: synchronous rendering of tokens. */
 export class Parser {
-  constructor(private readonly options?: MarkedOptions | null) {}
+  constructor(private readonly options?: MarkedOptions | null) { }
   static parse(tokens: TokensList, options?: MarkedOptions | null): string {
     return (options ? new Marked(options) : markedInstance).parser(tokens);
   }
@@ -281,6 +354,7 @@ export class Marked {
     handlers: [],
     decoders: [],
     allowOrigins: [],
+    permissions: [],
   };
 
   constructor(...args: MarkedExtension[]) {
@@ -303,6 +377,7 @@ export class Marked {
         handlers,
         decoders,
         allowOrigins,
+        permissions,
         renderer: _renderer,
         tokenizer: _tokenizer,
         extensions: _extensions,
@@ -322,6 +397,7 @@ export class Marked {
       if (handlers) this.chain.handlers.push(...handlers);
       if (decoders) this.chain.decoders.push(...decoders);
       if (allowOrigins) this.chain.allowOrigins.push(...allowOrigins);
+      if (permissions) this.chain.permissions.push(permissions);
     }
     return this;
   }
@@ -361,15 +437,26 @@ export class Marked {
       if (all) processAllTokens.unshift((v) => all.call(h, v));
     }
     if (o.walkTokens) walkTokens.unshift(o.walkTokens);
-    const origins = new Set<string>();
-    for (const x of [...this.chain.allowOrigins, ...(o.allowOrigins ?? [])]) {
-      const n = normaliseOrigin(x);
-      if (n !== null) origins.add(n);
-    }
-    const baseUrl = toUrl(o.baseUrl);
+    const mergedPerms = mergePermissions(
+      readPagePermissions(),
+      ...this.chain.permissions,
+      this.defaults.permissions,
+      call?.permissions,
+      {
+        ...(this.chain.allowOrigins.length > 0 || (o.allowOrigins?.length ?? 0) > 0
+          ? { allowOrigins: [...this.chain.allowOrigins, ...(o.allowOrigins ?? [])] }
+          : {}),
+        ...(o.logLevel !== undefined ? { logLevel: o.logLevel } : {}),
+      },
+    );
+    const provisionalBase = toUrl(o.baseUrl);
+    const policy = createPermissionPolicy(mergedPerms, {
+      ...(provisionalBase !== null ? { selfOrigin: provisionalBase.origin } : {}),
+    });
+    const baseUrl = toUrl(o.baseUrl, policy);
     const uriPolicy =
       o.uriPolicy ??
-      (typeof fetch === 'function' ? createBrowserUriPolicy({ origins: () => origins, base: () => baseUrl }) : undefined);
+      (typeof fetch === 'function' ? createBrowserUriPolicy({ policy, base: () => baseUrl }) : undefined);
     return {
       async: o.async === true,
       silent: o.silent === true,
@@ -379,7 +466,7 @@ export class Marked {
       walkTokens,
       handlers: [...builtinHandlers(), ...this.chain.handlers, ...(o.handlers ?? [])],
       decoders: [...this.chain.decoders, ...(o.decoders ?? [])],
-      origins,
+      policy,
       grants: o.grants ?? new GrantSet(),
       ...(uriPolicy ? { uriPolicy } : {}),
       baseUrl,
@@ -403,7 +490,11 @@ export class Marked {
       registry: createRegistry(c.decoders),
       grants: c.grants,
       limits: c.limits,
-      remoteAllowed: (_node, origin) => c.origins.has(origin),
+      remoteAllowed: (node, origin) => c.policy.allowsEmbed(origin, node),
+      policy: c.policy,
+      onHandlerError: (info) => {
+        logHandlerError(c.policy, info);
+      },
       sourceLines: c.sourceLines,
       diagnostics,
     };
@@ -413,7 +504,12 @@ export class Marked {
     const doc = toDocument(tokens);
     const diagnostics = [...doc.diagnostics];
     const o = this.syncOptions(c, diagnostics);
-    const html = renderSyncHtml(resolveSync(doc, o), o);
+    const resolved = resolveSync(doc, o);
+    const handled = new Set<string>(['text/markdown', ...o.handlers.keys()]);
+    walkSyncNodes(resolved, (e) => {
+      logUnloadedResource(e.node, e.state, e.error, undefined, o.registry, handled, c.policy, c.baseUrl);
+    });
+    const html = renderSyncHtml(resolved, o);
     c.onDiagnostics?.(diagnostics);
     return html;
   }
@@ -421,16 +517,28 @@ export class Marked {
   private async renderTokensAsync(tokens: TokensList, c: Effective): Promise<string> {
     const doc = toDocument(tokens);
     const diagnostics = [...doc.diagnostics];
-    const handlers = coreRegistry(c.handlers, (_node, origin) => c.origins.has(origin));
+    const registry = createRegistry(c.decoders);
+    const handlers = coreRegistry(c.handlers, (node, origin) => c.policy.allowsEmbed(origin, node), c.policy);
+    const handledTypes = handlers.types('view');
     const resolved = await resolveDocument(doc, {
-      registry: createRegistry(c.decoders),
+      registry,
       grants: c.grants,
       limits: c.limits,
-      handledTypes: handlers.types('view'),
+      handledTypes,
       diagnostics,
+      resolveKeys: (node, _stage, decoderId) => c.policy.keysFor(node, decoderId),
       ...(c.uriPolicy ? { uriPolicy: c.uriPolicy } : {}),
     });
-    const html = await renderHtml(resolved, { handlers, sourceLines: c.sourceLines });
+    for (const e of collectResources(resolved) as ResolvedResource[]) {
+      logUnloadedResource(e.node, e.result.state, e.result.error, e.result.detail, registry, handledTypes, c.policy, c.baseUrl);
+    }
+    const html = await renderHtml(resolved, {
+      handlers,
+      sourceLines: c.sourceLines,
+      onHandlerError: (info) => {
+        logHandlerError(c.policy, info);
+      },
+    });
     c.onDiagnostics?.(diagnostics);
     return html;
   }

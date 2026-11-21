@@ -21,8 +21,10 @@ import {
   type ErrorCode,
   type Fallback,
   type GrantSet,
+  type HandlerErrorInfo,
   type KnownRel,
   type Limits,
+  type PermissionPolicy,
   type ProseNode,
   type RenderedBlock,
   type ResourceNode,
@@ -57,6 +59,8 @@ export interface SyncOptions {
   grants: GrantSet;
   limits: Limits;
   remoteAllowed: (node: ResourceNode | undefined, origin: string) => boolean;
+  policy?: PermissionPolicy;
+  onHandlerError?: (info: HandlerErrorInfo) => void;
   sourceLines: boolean;
   diagnostics: Diagnostic[];
 }
@@ -208,13 +212,19 @@ function renderChild(e: SyncEntry, o: SyncOptions, rel: KnownRel, base: number):
   const h = o.handlers.get(type);
   if (h === undefined) return fallbackChild(e);
   try {
-    const out = h.render(e.bytes, { type, node: e.node, remoteAllowed: (origin) => o.remoteAllowed(e.node, origin) });
+    const out = h.render(e.bytes, {
+      type,
+      node: e.node,
+      remoteAllowed: (origin) => o.remoteAllowed(e.node, origin),
+      ...(o.policy ? { policy: o.policy } : {}),
+    });
     if (typeof out !== 'string') {
       out.then(noop, noop);
       return fallbackChild(e, REQUIRES_ASYNC);
     }
     return { html: `<md2-view>${out}</md2-view>` };
-  } catch {
+  } catch (error) {
+    o.onHandlerError?.({ node: e.node, type, error });
     return fallbackChild(e, 'handler-error');
   }
 }
@@ -230,10 +240,12 @@ function fenceSync(o: SyncOptions): (info: string, body: string) => string {
         const out = h.render(encoder.encode(body), {
           type,
           remoteAllowed: (origin) => o.remoteAllowed(undefined, origin),
+          ...(o.policy ? { policy: o.policy } : {}),
         });
         if (typeof out === 'string') return out;
         out.then(noop, noop);
-      } catch {
+      } catch (error) {
+        o.onHandlerError?.({ type, error, fence: true });
         // Not usable by the aliased handler: ordinary code.
       }
     }

@@ -59,8 +59,17 @@ export {
 } from './handlers.js';
 export type { Md2Handler, Md2HandlerContext, RemoteNeed } from './handlers.js';
 
-export { ageDecoder, createBrowserUriPolicy, createRegistry, isKeyGrant, resolveRemoteUri } from './decoders.js';
-export type { KeyGrant } from './decoders.js';
+export { ageDecoder, createBrowserUriPolicy, createRegistry, diagnoseRemoteUri, isKeyGrant, resolveRemoteUri } from './decoders.js';
+export type { KeyGrant, ResolveUriOptions, UriDiagnosis } from './decoders.js';
+
+export {
+  createPermissionPolicy,
+  mergePermissions,
+  parseOriginRule,
+  parsePermissionsMeta,
+  readPagePermissions,
+} from '@markdown2/core';
+export type { KeyRule, LogLevel, OriginRule, PermissionEnv, PermissionPolicy, PermissionsConfig } from '@markdown2/core';
 
 export { defaultCss, themeCss } from './css.js';
 export { encryptAge, gzipBase64, pickToken, resource, wrap76 } from './authoring.js';

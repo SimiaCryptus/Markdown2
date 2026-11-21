@@ -13,6 +13,28 @@ export async function fromHandle(handle: FileSystemFileHandle): Promise<OpenedDo
   return { name: file.name, text: await file.text(), handle };
 }
 
+type PermissionHandle = FileSystemFileHandle & {
+  requestPermission?: (desc?: { mode?: 'read' | 'readwrite' }) => Promise<PermissionState>;
+};
+
+/**
+ * Open a handle received from `window.launchQueue`.
+ * Retries once via `requestPermission` if the browser initially rejects with `NotAllowedError`.
+ */
+export async function fromLaunchHandle(handle: FileSystemHandle): Promise<OpenedDocument | null> {
+  if (handle.kind !== 'file') return null;
+  const fh = handle as PermissionHandle;
+  try {
+    return await fromHandle(fh);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'NotAllowedError' && typeof fh.requestPermission === 'function') {
+      const state = await fh.requestPermission({ mode: 'read' });
+      if (state === 'granted') return await fromHandle(fh);
+    }
+    throw e;
+  }
+}
+
 export async function fromFile(file: File): Promise<OpenedDocument> {
   return { name: file.name, text: await file.text() };
 }

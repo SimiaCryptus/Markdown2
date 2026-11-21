@@ -4,12 +4,14 @@ import {
   escapeHtml,
   headerPresent,
   HandlerRegistry,
+  logBlockedEmbed,
   markdownHandler,
   MAX_TABLE_BYTES,
   parseCsv,
   parseTsv,
   tableHtml,
   typeEssence,
+  type PermissionPolicy,
   type ResourceNode,
 } from '@markdown2/core';
 import { waveToSvg } from '../../../packages/core/src/wavedrom.js';
@@ -22,6 +24,8 @@ export interface Md2HandlerContext {
   node?: ResourceNode;
   /** Whether this view may contact `origin`. False unless the app or the user allowed it. */
   remoteAllowed: (origin: string) => boolean;
+  /** Active permission policy, if configured. */
+  policy?: PermissionPolicy;
 }
 
 /** Network access a view needs for given bytes. */
@@ -40,7 +44,7 @@ export interface Md2Handler {
   types: readonly string[];
   render(bytes: Uint8Array, ctx: Md2HandlerContext): string | Promise<string>;
   /** Network access the view would need, so readers can ask first. */
-  remote?: (bytes: Uint8Array, type: string) => RemoteNeed | null;
+  remote?: (bytes: Uint8Array, type: string, policy?: PermissionPolicy) => RemoteNeed | null;
 }
 
 const lenient = new TextDecoder('utf-8');
@@ -108,28 +112,63 @@ function appOrigin(): string | undefined {
   return typeof location === 'undefined' ? undefined : location.origin;
 }
 
-/** The page an embed points at: first non-comment line, `https:` only, never the host page's own origin. */
-export function pageTarget(bytes: Uint8Array, app: string | undefined = appOrigin()): URL | null {
+export interface PageTargetOptions {
+  appOrigin?: string;
+  policy?: PermissionPolicy;
+}
+
+export interface PageTargetDiagnosis {
+  url: URL | null;
+  reason?: string;
+}
+
+/** Validate an embedded page URL (`text/uri-list`) and explain why it was rejected if invalid. */
+export function diagnosePageTarget(bytes: Uint8Array, opts: PageTargetOptions = {}): PageTargetDiagnosis {
+  const app = opts.appOrigin !== undefined ? opts.appOrigin : appOrigin();
   let text: string;
   try {
     text = strictUtf8(bytes);
   } catch {
-    return null;
+    return { url: null, reason: 'Embedded page payload is not valid UTF-8.' };
   }
   const line = text
     .split(/\r?\n/)
     .map((l) => l.trim())
     .find((l) => l !== '' && !l.startsWith('#'));
-  if (line === undefined) return null;
+  if (line === undefined) return { url: null, reason: 'No URL found in text/uri-list payload.' };
   let u: URL;
   try {
     u = new URL(line);
   } catch {
-    return null;
+    return { url: null, reason: `Malformed URL "${line}" in text/uri-list.` };
   }
-  if (u.protocol !== 'https:' || u.username !== '' || u.password !== '') return null;
-  if (app !== undefined && u.origin === app) return null;
-  return u;
+  if (u.username !== '' || u.password !== '') {
+    return { url: null, reason: `Embedded page URL "${line}" contains credentials, which are not permitted.` };
+  }
+  const isHttps = u.protocol === 'https:';
+  const isAllowedHttp = u.protocol === 'http:' && opts.policy?.allowsHttpUrl(u, 'embed') === true;
+  if (!isHttps && !isAllowedHttp) {
+    return {
+      url: null,
+      reason:
+        u.protocol === 'http:'
+          ? `Plain http: embedded page "${u.href}" is blocked by default. To allow it, explicitly whitelist "${u.origin}" in permissions.allowOrigins (or allowEmbed) or set permissions.allowHttp: true.`
+          : `Unsupported scheme "${u.protocol}" for embedded page "${line}". Only https: (or explicitly whitelisted http:) pages can be embedded.`,
+    };
+  }
+  if (app !== undefined && u.origin === app && opts.policy?.allowSameOriginEmbed !== true) {
+    return {
+      url: null,
+      reason: `Same-origin embedded page "${u.href}" is blocked by default to prevent embedded frames from reaching host page state. To allow it, set permissions: { allowOrigins: ['self'], allowSameOriginEmbed: true }.`,
+    };
+  }
+  return { url: u };
+}
+
+/** The page an embed points at: first non-comment line, `https:` only (unless whitelisted), never the host page's own origin (unless opted in). */
+export function pageTarget(bytes: Uint8Array, appOrOpts?: string | PageTargetOptions): URL | null {
+  const opts: PageTargetOptions = typeof appOrOpts === 'string' ? { appOrigin: appOrOpts } : (appOrOpts ?? {});
+  return diagnosePageTarget(bytes, opts).url;
 }
 
 /**
@@ -138,15 +177,17 @@ export function pageTarget(bytes: Uint8Array, app: string | undefined = appOrigi
  */
 export const pageHandler: Md2Handler = {
   types: [PAGE_TYPE],
-  remote: (bytes) => {
-    const u = pageTarget(bytes);
+  remote: (bytes, _type, policy) => {
+    const u = pageTarget(bytes, policy ? { policy } : undefined);
     return u === null ? null : { origin: u.origin, label: u.host };
   },
   render: (bytes, ctx) => {
-    const u = pageTarget(bytes);
-    if (u === null) throw new Error('not an https: page on another site');
+    const diag = diagnosePageTarget(bytes, ctx.policy ? { policy: ctx.policy } : undefined);
+    const u = diag.url;
+    if (u === null) throw new Error(diag.reason ?? 'not an https: page on another site');
     const href = escapeHtml(u.href);
     if (!ctx.remoteAllowed(u.origin)) {
+      if (ctx.policy) logBlockedEmbed(ctx.policy, ctx.node, u.origin, u.host);
       return `<div class="m2-embed m2-embed-pending"><span class="m2-embed-host">🌐 ${escapeHtml(u.host)}</span><span>Embedded page, not loaded.</span><a href="${href}" target="_blank" rel="noopener noreferrer nofollow">${href}</a><span class="m2-load-slot"></span></div>`;
     }
     const title = ctx.node?.resource.attributes.get('title') ?? u.host;
@@ -175,6 +216,7 @@ export function handlerMap(list: readonly Md2Handler[]): Map<string, Md2Handler>
 export function coreRegistry(
   list: readonly Md2Handler[],
   remoteAllowed: (node: ResourceNode | undefined, origin: string) => boolean,
+  policy?: PermissionPolicy,
 ): HandlerRegistry {
   const r = new HandlerRegistry([markdownHandler]);
   for (const h of list) {
@@ -188,6 +230,7 @@ export function coreRegistry(
               type: ctx.type,
               ...(ctx.node ? { node: ctx.node } : {}),
               remoteAllowed: (origin) => remoteAllowed(ctx.node, origin),
+              ...(policy ? { policy } : {}),
             }),
           );
         }),

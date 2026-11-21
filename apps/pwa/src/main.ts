@@ -5,19 +5,32 @@ import {
   ByteQuota,
   collectResources,
   composeCascade,
+  createPermissionPolicy,
+  DID_YOU_MEAN,
   GrantSet,
+  hasHandler,
+  logBlockedFetch,
+  logDecodeFailure,
+  logHandlerError,
+  logLockedKey,
+  logUnsupportedResource,
+  mergePermissions,
+  parseOriginRule,
+  readPagePermissions,
   selectionFor,
+  typeEssence,
   type DecodeState,
   type Diagnostic,
+  type PermissionPolicy,
   type ResolvedResource,
   type ResourceNode,
   type StyleModel,
   type StyleSelection,
   type StyleGroup,
 } from '@markdown2/core';
-import { createBrowserUriPolicy, createRegistry, resolveRemoteUri, type KeyGrant } from './decoders.js';
+import { createBrowserUriPolicy, createRegistry, diagnoseRemoteUri, resolveRemoteUri, type KeyGrant } from './decoders.js';
 import { DOCS, REPO } from './docs.js';
-import { downloadBytes, fromFile, fromHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
+import { downloadBytes, fromFile, fromLaunchHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
 import { installFrameHost } from './frames.js';
 import { enhanceTables, resetGridState } from './grid.js';
 import { codeFence, createHandlers, remoteNeed, type RemoteNeed } from './handlers.js';
@@ -69,13 +82,15 @@ const narrow = window.matchMedia('(max-width: 900px)');
 
 // ---------------------------------------------------------------- state
 const registry = createRegistry();
-const handlers = createHandlers({ remoteAllowed, appOrigin: location.origin });
+const pagePerms = readPagePermissions();
+let origins = loadOrigins();
+let permissionPolicy: PermissionPolicy = buildPermissionPolicy();
+const handlers = createHandlers({ remoteAllowed, policy: () => permissionPolicy, appOrigin: location.origin });
 let grants = new GrantSet(); // in memory only; cleared on tab close
 /** Per-resource permission to load embedded pages and charts (§5.5). In memory only. */
 let embeds = new GrantSet();
-let origins = loadOrigins();
 // Relative `uri` references resolve against the address of a document opened by URL.
-const uriPolicy = createBrowserUriPolicy({ origins: () => origins, base: () => docUrl });
+const uriPolicy = createBrowserUriPolicy({ policy: () => permissionPolicy, base: () => docUrl });
 let current: PipelineResult | null = null;
 let controller: AbortController | null = null;
 let seq = 0;
@@ -113,6 +128,12 @@ function setStatus(s: string, sticky = false): void {
   }
 }
 
+function buildPermissionPolicy(): PermissionPolicy {
+  return createPermissionPolicy(mergePermissions(pagePerms, { allowOrigins: origins }), {
+    selfOrigin: location.origin,
+  });
+}
+
 function loadOrigins(): Set<string> {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(ORIGINS_KEY) ?? '[]');
@@ -123,17 +144,18 @@ function loadOrigins(): Set<string> {
 }
 /** Embedded pages and charts load only with a per-resource grant or a user-allowed origin. */
 function remoteAllowed(node: ResourceNode | undefined, origin: string): boolean {
-  return (node !== undefined && embeds.has(node, 0)) || origins.has(origin);
+  return (node !== undefined && embeds.has(node, 0)) || permissionPolicy.allowsEmbed(origin, node);
 }
 /** "Always allow this site": adds the origin to the user's list, which Remote… edits. */
 function allowOrigin(origin: string): void {
   origins = new Set([...origins, origin]);
+  permissionPolicy = buildPermissionPolicy();
   localStorage.setItem(ORIGINS_KEY, JSON.stringify([...origins]));
   setStatus(`Always allowing ${new URL(origin).host}. Manage the list with Remote…`);
 }
 /** Open a link outside the app, never in place of it. */
 function openExternal(url: string): void {
-   window.open(url, '_blank', 'noopener,noreferrer');
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 
@@ -266,14 +288,14 @@ function updateCounts(): void {
 }
 
 function updateSaveState(): void {
-   if (docUrl !== null) {
-     const dirty = savedText !== editor.value;
-     saveStateEl.dataset.state = dirty ? 'dirty' : 'saved';
-     saveStateEl.textContent = dirty
-       ? `Edited copy from ${docUrl.host} · not autosaved`
-       : `Opened from ${docUrl.host} · edits not autosaved`;
-     return;
-   }
+  if (docUrl !== null) {
+    const dirty = savedText !== editor.value;
+    saveStateEl.dataset.state = dirty ? 'dirty' : 'saved';
+    saveStateEl.textContent = dirty
+      ? `Edited copy from ${docUrl.host} · not autosaved`
+      : `Opened from ${docUrl.host} · edits not autosaved`;
+    return;
+  }
   if (savedText === null) {
     saveStateEl.dataset.state = 'draft';
     saveStateEl.textContent = 'Local draft · autosaved';
@@ -292,6 +314,38 @@ function setDocName(name: string): void {
   document.title = `${name} · Markdown2`;
 }
 
+function logUnloadedResources(r: PipelineResult): void {
+  const handled = handlers.types('view');
+  for (const entry of r.resources.values()) {
+    const { node, result } = entry;
+    if (result.state === 'locked') {
+      const gate = gatedStages(node, registry, grants)[0];
+      if (gate?.decoder.id === 'uri') {
+        const rawUri = new TextDecoder().decode(node.resource.payload).trim();
+        const diag = diagnoseRemoteUri(rawUri, docUrl, permissionPolicy);
+        logBlockedFetch(permissionPolicy, node, rawUri, diag.url?.origin ?? null, diag.reason);
+      } else if (gate !== undefined) {
+        logLockedKey(permissionPolicy, node, gate.decoder.id, result.error === 'key-rejected');
+      }
+    } else if (result.state === 'unsupported') {
+      logUnsupportedResource(permissionPolicy, node, 'encoding');
+    } else if (result.state === 'failed') {
+      logDecodeFailure(permissionPolicy, node, result.error ?? 'decode-error', result.detail);
+    } else if (
+      result.state === 'decoded' &&
+      node.rel !== 'metadata' &&
+      node.rel !== 'stylesheet' &&
+      node.rel !== 'attachment' &&
+      !hasHandler(handled, node.resource.type)
+    ) {
+      const essence = typeEssence(node.resource.type);
+      const suggestion =
+        essence !== undefined && Object.hasOwn(DID_YOU_MEAN, essence) ? DID_YOU_MEAN[essence] : undefined;
+      logUnsupportedResource(permissionPolicy, node, 'type', suggestion);
+    }
+  }
+}
+
 // ---------------------------------------------------------------- pipeline
 async function refresh(): Promise<void> {
   controller?.abort();
@@ -299,26 +353,35 @@ async function refresh(): Promise<void> {
   controller = ctl;
   const mine = ++seq;
   try {
-     const r = await runPipeline(editor.value, {
-       registry,
-       grants,
-       handlers,
-       uriPolicy,
-       codeFence,
-       sourceLines: true,
-       signal: ctl.signal,
-     });
+    const r = await runPipeline(editor.value, {
+      registry,
+      grants,
+      handlers,
+      uriPolicy,
+      resolveKeys: (node, _stage, decoderId) => permissionPolicy.keysFor(node, decoderId),
+      onHandlerError: (info) => {
+        logHandlerError(permissionPolicy, info);
+      },
+      codeFence,
+      sourceLines: true,
+      signal: ctl.signal,
+    });
     if (mine !== seq) return; // a newer run superseded this one
     current = r;
+    logUnloadedResources(r);
     preview.innerHTML = r.html; // renderHtml escapes everything it emits
-     enhanceTables(preview);
+    enhanceTables(preview);
     applyStyles();
     renderStylePanel(r.styles);
     renderResourcePanel(r);
     decoratePreview(r);
     showDiagnostics(r.diagnostics);
   } catch (e) {
-    if (mine === seq) setStatus(`Render failed: ${e instanceof Error ? e.message : String(e)}`, true);
+    if (mine === seq) {
+      const msg = e instanceof Error ? e.message : String(e);
+      permissionPolicy.error(`Render failed: ${msg}`);
+      setStatus(`Render failed: ${msg}`, true);
+    }
   }
 }
 
@@ -326,18 +389,18 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 function schedule(): void {
   clearTimeout(timer);
   timer = setTimeout(() => {
-     timer = undefined;
-     if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
+    timer = undefined;
+    if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
     updateCounts();
     void refresh();
   }, 250);
 }
 /** Write a pending autosave now, before the editor content is replaced. */
 function flushDraft(): void {
-   if (timer === undefined) return;
-   clearTimeout(timer);
-   timer = undefined;
-   if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  timer = undefined;
+  if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
 }
 
 // ---------------------------------------------------------------- styles
@@ -363,7 +426,9 @@ function applyStyles(): void {
   try {
     cascadeSheet.replaceSync(composeCascade({ author, user: userCss.trim() === '' ? [] : [userCss], quota }));
   } catch (e) {
-    setStatus(`Styles not applied: ${e instanceof Error ? e.message : String(e)}`, true);
+    const msg = e instanceof Error ? e.message : String(e);
+    permissionPolicy.warn(`Styles not applied: ${msg}`);
+    setStatus(`Styles not applied: ${msg}`, true);
   }
 }
 
@@ -592,20 +657,20 @@ function revealInPreview(id: string): void {
   const target = document.getElementById(`m2-${id}`);
   if (!target) return;
   target.scrollIntoView({ block: 'center', behavior: reduceMotion.matches ? 'auto' : 'smooth' });
-   glow(target);
+  glow(target);
 }
 
 /** A brief gold glow around an element in the page. */
 function glow(target: HTMLElement): void {
-   if (reduceMotion.matches) return;
-   target.animate(
-     [
-       { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
-       { boxShadow: '0 0 0 6px rgba(200, 151, 63, 0.45)' },
-       { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
-     ],
-     { duration: 1400, easing: 'ease-out' },
-   );
+  if (reduceMotion.matches) return;
+  target.animate(
+    [
+      { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
+      { boxShadow: '0 0 0 6px rgba(200, 151, 63, 0.45)' },
+      { boxShadow: '0 0 0 0 rgba(200, 151, 63, 0)' },
+    ],
+    { duration: 1400, easing: 'ease-out' },
+  );
 }
 
 /**
@@ -757,7 +822,7 @@ async function unlock(entry: ResolvedResource): Promise<void> {
 
   if (gate.decoder.id === 'uri') {
     const uri = new TextDecoder().decode(node.resource.payload).trim();
-     const u = resolveRemoteUri(uri, docUrl);
+    const u = resolveRemoteUri(uri, docUrl);
     const choice = await askRemote(
       label,
       u?.host ?? uri,
@@ -817,7 +882,7 @@ function inlineActions(entry: ResolvedResource): InlineAction[] {
   if (result.state === 'locked') {
     const gate = gatedStages(node, registry, grants)[0];
     if (gate?.decoder.id === 'uri') {
-       const host = resolveRemoteUri(new TextDecoder().decode(node.resource.payload).trim(), docUrl)?.host ?? 'the web';
+      const host = resolveRemoteUri(new TextDecoder().decode(node.resource.payload).trim(), docUrl)?.host ?? 'the web';
       return [{ text: `Load from ${host}…`, label: `Load ${label} from ${host}`, run: () => void unlock(entry) }];
     }
     return [{ text: '🔒 Unlock…', label: `Unlock ${label}`, run: () => void unlock(entry) }];
@@ -949,24 +1014,34 @@ function seekEditor(line: number): void {
 type DocSource = { kind: 'file' } | { kind: 'share' } | { kind: 'draft' } | { kind: 'url'; url: URL };
 
 function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
-   flushDraft();
+  if (source.kind !== 'url') {
+    opening?.abort();
+    opening = null;
+  }
+  flushDraft();
   editor.value = doc.text;
   setDocName(doc.name);
   fileHandle = doc.handle;
-   docUrl = source.kind === 'url' ? source.url : null;
-   // Documents opened by URL (such as the help pages) never overwrite the local draft.
-   autosave = source.kind !== 'url';
-   savedText = source.kind === 'file' || source.kind === 'url' ? doc.text : null;
+  docUrl = source.kind === 'url' ? source.url : null;
+  // Documents opened by URL (such as the help pages) never overwrite the local draft.
+  autosave = source.kind !== 'url';
+  savedText = source.kind === 'file' || source.kind === 'url' ? doc.text : null;
   grants = new GrantSet(); // keys never carry over to another document
   embeds = new GrantSet();
   overrides = new Map(); // per-document selections start from defaults and preferences
-   resetGridState(); // sort, filter and sizes belong to the previous document
+  resetGridState(); // sort, filter and sizes belong to the previous document
   docStyles = localStorage.getItem(DOC_STYLES_KEY) !== 'off';
-   if (source.kind === 'file' || source.kind === 'share') localStorage.setItem(DRAFT_KEY, doc.text);
-   if (source.kind !== 'url' && new URLSearchParams(location.search).has('url')) {
-     history.replaceState(null, '', location.pathname);
-   }
-   currentHref = location.href;
+  if (source.kind === 'file' || source.kind === 'share') {
+    try {
+      localStorage.setItem(DRAFT_KEY, doc.text);
+    } catch {
+      // Ignore storage quota errors; the document is still open in the editor.
+    }
+  }
+  if (source.kind !== 'url' && new URLSearchParams(location.search).has('url')) {
+    history.replaceState(null, '', location.pathname);
+  }
+  currentHref = location.href;
   editor.scrollTop = 0;
   editor.setSelectionRange(0, 0);
   syncGutter();
@@ -974,7 +1049,7 @@ function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
   updateCursor();
   updateCounts();
   updateSaveState();
-   setStatus(source.kind === 'draft' ? 'Back to your draft' : `Opened ${doc.name}`);
+  setStatus(source.kind === 'draft' ? 'Back to your draft' : `Opened ${doc.name}`);
   void refresh();
 }
 
@@ -996,14 +1071,14 @@ async function saveDoc(): Promise<void> {
       fileHandle = outcome.handle;
       setDocName(outcome.handle.name);
     }
-     if (docUrl !== null) {
-       // Saved: from now on this is an ordinary document with an autosaved draft.
-       docUrl = null;
-       autosave = true;
-       localStorage.setItem(DRAFT_KEY, text);
-       history.replaceState(null, '', location.pathname);
-       currentHref = location.href;
-     }
+    if (docUrl !== null) {
+      // Saved: from now on this is an ordinary document with an autosaved draft.
+      docUrl = null;
+      autosave = true;
+      localStorage.setItem(DRAFT_KEY, text);
+      history.replaceState(null, '', location.pathname);
+      currentHref = location.href;
+    }
     savedText = text;
     updateSaveState();
     setStatus(outcome.kind === 'file' ? `Saved ${fileName}` : `Downloaded ${fileName}`);
@@ -1014,25 +1089,25 @@ async function saveDoc(): Promise<void> {
 
 function editPolicy(): void {
   const answer = prompt(
-    'Origins allowed to serve remote resources, embedded pages, charts and maps (https only, space separated).\nFor Google Charts, add https://www.gstatic.com. For maps, add https://tiles.openfreemap.org.\nLeave empty to keep everything remote locked.',
+    'Origins allowed to serve remote resources, embedded pages, charts and maps (space separated).\nSupports https://example.com, https://*.example.com, self, *, or explicit http://localhost:PORT.\nFor Google Charts, add https://www.gstatic.com. For maps, add https://tiles.openfreemap.org.\nLeave empty to keep everything remote locked.',
     [...origins].join(' '),
   );
   if (answer === null) return;
   const next = new Set<string>();
   const bad: string[] = [];
   for (const part of answer.split(/\s+/).filter(Boolean)) {
-    try {
-      const u = new URL(part);
-      if (u.protocol !== 'https:') throw new Error('not https');
-      next.add(u.origin);
-    } catch {
+    const parsed = parseOriginRule(part);
+    if (parsed.ok) next.add(parsed.normalized);
+    else {
+      permissionPolicy.warn(parsed.warning);
       bad.push(part);
     }
   }
   if (bad.length > 0) alert(`Ignored: ${bad.join(', ')}`);
   origins = next;
+  permissionPolicy = buildPermissionPolicy();
   localStorage.setItem(ORIGINS_KEY, JSON.stringify([...next]));
-  setStatus(next.size === 0 ? 'Every remote resource stays locked' : `${next.size} origin(s) allowed`);
+  setStatus(next.size === 0 ? 'Every remote resource stays locked' : `${next.size} origin rule(s) allowed`);
   void refresh();
 }
 
@@ -1044,12 +1119,12 @@ function openKeys(): void {
 type Nav = 'push' | 'replace' | 'none';
 /** Unsaved edits to a URL document are not autosaved; ask before discarding them. */
 function confirmDiscard(): boolean {
-   if (autosave || savedText === null || savedText === editor.value) return true;
-   return confirm('This document was opened from a URL and your edits are not autosaved. Discard them?');
+  if (autosave || savedText === null || savedText === editor.value) return true;
+  return confirm('This document was opened from a URL and your edits are not autosaved. Discard them?');
 }
 function urlParamFor(u: URL): string {
-   const v = u.origin === location.origin ? `${u.pathname}${u.search}` : u.href;
-   return encodeURIComponent(v).replace(/%2F/gi, '/').replace(/%3A/gi, ':');
+  const v = u.origin === location.origin ? `${u.pathname}${u.search}` : u.href;
+  return encodeURIComponent(v).replace(/%2F/gi, '/').replace(/%3A/gi, ':');
 }
 let opening: AbortController | null = null;
 /**
@@ -1057,112 +1132,116 @@ let opening: AbortController | null = null;
   * first. Opening a document never unlocks or fetches anything inside it.
   */
 async function openUrl(raw: string, nav: Nav): Promise<boolean> {
-   const u = resolveDocUrl(raw, location.href);
-   if (u === null) {
-     setStatus(`Cannot open "${raw}": use a path on this site or an https: URL`, true);
-     return false;
-   }
-   const same = u.origin === location.origin;
-   if (
-     !same &&
-     !confirm(
-       `Open the document at\n${u.href}?\n\nThat server will learn that you opened it. Nothing inside the document is unlocked or fetched.`,
-     )
-   ) {
-     setStatus('Not opened');
-     return false;
-   }
-   opening?.abort();
-   const ctl = new AbortController();
-   opening = ctl;
-   setStatus(`Opening ${same ? u.pathname : u.href}…`, true);
-   try {
-     const text = await fetchDocument(u, { sameOrigin: same, signal: ctl.signal });
-     if (opening !== ctl) return false;
-     const target = `${location.pathname}?url=${urlParamFor(u)}`;
-     if (nav === 'push') history.pushState(null, '', target);
-     else if (nav === 'replace') history.replaceState(null, '', target);
-     load({ name: docNameFor(u), text }, { kind: 'url', url: u });
-     currentHref = location.href;
-     return true;
-   } catch (e) {
-     if (opening === ctl) setStatus(`Could not open ${u.href}: ${e instanceof Error ? e.message : String(e)}`, true);
-     return false;
-   } finally {
-     if (opening === ctl) opening = null;
-   }
+  const u = resolveDocUrl(raw, location.href);
+  if (u === null) {
+    setStatus(`Cannot open "${raw}": use a path on this site or an https: URL`, true);
+    return false;
+  }
+  const same = u.origin === location.origin;
+  if (
+    !same &&
+    !confirm(
+      `Open the document at\n${u.href}?\n\nThat server will learn that you opened it. Nothing inside the document is unlocked or fetched.`,
+    )
+  ) {
+    setStatus('Not opened');
+    return false;
+  }
+  opening?.abort();
+  const ctl = new AbortController();
+  opening = ctl;
+  setStatus(`Opening ${same ? u.pathname : u.href}…`, true);
+  try {
+    const text = await fetchDocument(u, { sameOrigin: same, signal: ctl.signal });
+    if (opening !== ctl) return false;
+    const target = `${location.pathname}?url=${urlParamFor(u)}`;
+    if (nav === 'push') history.pushState(null, '', target);
+    else if (nav === 'replace') history.replaceState(null, '', target);
+    load({ name: docNameFor(u), text }, { kind: 'url', url: u });
+    currentHref = location.href;
+    return true;
+  } catch (e) {
+    if (opening === ctl) {
+      const msg = e instanceof Error ? e.message : String(e);
+      permissionPolicy.warn(`Could not open document "${u.href}": ${msg}`);
+      setStatus(`Could not open ${u.href}: ${msg}`, true);
+    }
+    return false;
+  } finally {
+    if (opening === ctl) opening = null;
+  }
 }
 function navigateTo(raw: string): void {
-   if (confirmDiscard()) void openUrl(raw, 'push');
+  if (confirmDiscard()) void openUrl(raw, 'push');
 }
 function openDraft(nav: Nav): void {
-   if (nav === 'push') history.pushState(null, '', location.pathname);
-   else if (nav === 'replace') history.replaceState(null, '', location.pathname);
-   load({ name: 'untitled.md', text: localStorage.getItem(DRAFT_KEY) ?? SAMPLE }, { kind: 'draft' });
+  if (nav === 'push') history.pushState(null, '', location.pathname);
+  else if (nav === 'replace') history.replaceState(null, '', location.pathname);
+  load({ name: 'untitled.md', text: localStorage.getItem(DRAFT_KEY) ?? SAMPLE }, { kind: 'draft' });
 }
 function promptUrl(): void {
-   const raw = prompt('Open a Markdown2 document from a URL.\nA path on this site (/docs/guide.md) or an https: address.', '');
-   if (raw !== null && raw.trim() !== '') navigateTo(raw.trim());
+  const raw = prompt('Open a Markdown2 document from a URL.\nA path on this site (/docs/guide.md) or an https: address.', '');
+  if (raw !== null && raw.trim() !== '') navigateTo(raw.trim());
 }
 function menuItem(title: string, sub: string | undefined, onClick: () => void): HTMLButtonElement {
-   const b = el('button', 'menu-item');
-   b.type = 'button';
-   b.tabIndex = -1;
-   b.setAttribute('role', 'menuitem');
-   b.append(el('span', 'menu-title', title));
-   if (sub !== undefined) b.append(el('span', 'menu-sub', sub));
-   b.addEventListener('click', () => {
-     closeHelpMenu();
-     onClick();
-   });
-   return b;
+  const b = el('button', 'menu-item');
+  b.type = 'button';
+  b.tabIndex = -1;
+  b.setAttribute('role', 'menuitem');
+  b.append(el('span', 'menu-title', title));
+  if (sub !== undefined) b.append(el('span', 'menu-sub', sub));
+  b.addEventListener('click', () => {
+    closeHelpMenu();
+    onClick();
+  });
+  return b;
 }
 function buildHelpMenu(): void {
-   const here = docUrl !== null && docUrl.origin === location.origin ? docUrl.pathname : null;
-   helpMenu.replaceChildren(el('div', 'menu-head', 'Documentation'));
-   for (const d of DOCS) {
-     const item = menuItem(d.title, d.summary, () => {
-       navigateTo(d.path);
-     });
-     if (d.path === here) item.setAttribute('aria-current', 'page');
-     helpMenu.append(item);
-   }
-   const sep = el('div', 'menu-sep');
-   sep.setAttribute('role', 'separator');
-   helpMenu.append(sep);
-   if (docUrl !== null) {
-     helpMenu.append(
-       menuItem('Back to my draft', 'Your autosaved local draft', () => {
-         if (confirmDiscard()) openDraft('push');
-       }),
-     );
-   }
-   helpMenu.append(menuItem('Open a URL…', 'A path on this site or an https: address', promptUrl));
-   helpMenu.append(menuItem('Keyboard shortcuts', 'Press ? at any time', openKeys));
-    const sep2 = el('div', 'menu-sep');
-    sep2.setAttribute('role', 'separator');
+  const here = docUrl !== null && docUrl.origin === location.origin ? docUrl.pathname : null;
+  helpMenu.replaceChildren(el('div', 'menu-head', 'Documentation'));
+  for (const d of DOCS) {
+    const item = menuItem(d.title, d.summary, () => {
+      navigateTo(d.path);
+    });
+    if (d.path === here) item.setAttribute('aria-current', 'page');
+    helpMenu.append(item);
+  }
+  const sep = el('div', 'menu-sep');
+  sep.setAttribute('role', 'separator');
+  helpMenu.append(sep);
+  if (docUrl !== null) {
     helpMenu.append(
-      sep2,
-      el('div', 'menu-head', 'Community'),
-      menuItem('Markdown2 on GitHub', 'Star the project, read the code, join in', () => {
-        openExternal(REPO);
-      }),
-      menuItem('Report an issue or idea', 'Opens a new issue on GitHub', () => {
-        openExternal(`${REPO}/issues/new/choose`);
+      menuItem('Back to my draft', 'Your autosaved local draft', () => {
+        if (confirmDiscard()) openDraft('push');
       }),
     );
+  }
+  helpMenu.append(menuItem('Open a URL…', 'A path on this site or an https: address', promptUrl));
+  helpMenu.append(menuItem('Keyboard shortcuts', 'Press ? at any time', openKeys));
+  const sep2 = el('div', 'menu-sep');
+  sep2.setAttribute('role', 'separator');
+  helpMenu.append(
+    sep2,
+    el('div', 'menu-head', 'Community'),
+    menuItem('Markdown2 on GitHub', 'Star the project, read the code, join in', () => {
+      openExternal(REPO);
+    }),
+    menuItem('Report an issue or idea', 'Opens a new issue on GitHub', () => {
+      openExternal(`${REPO}/issues/new/choose`);
+    }),
+  );
 }
 function openHelpMenu(): void {
-   buildHelpMenu();
-   helpMenu.hidden = false;
-   helpBtn.setAttribute('aria-expanded', 'true');
-   helpMenu.querySelector<HTMLButtonElement>('.menu-item')?.focus();
+  buildHelpMenu();
+  helpMenu.hidden = false;
+  helpBtn.setAttribute('aria-expanded', 'true');
+  helpMenu.querySelector<HTMLButtonElement>('.menu-item')?.focus();
 }
 function closeHelpMenu(focusButton = false): void {
-   if (helpMenu.hidden) return;
-   helpMenu.hidden = true;
-   helpBtn.setAttribute('aria-expanded', 'false');
-   if (focusButton) helpBtn.focus();
+  if (helpMenu.hidden) return;
+  helpMenu.hidden = true;
+  helpBtn.setAttribute('aria-expanded', 'false');
+  if (focusButton) helpBtn.focus();
 }
 
 // ---------------------------------------------------------------- wiring
@@ -1175,9 +1254,9 @@ editor.addEventListener('input', () => {
 for (const type of ['keyup', 'click', 'select', 'focus'] as const) editor.addEventListener(type, updateCursor);
 // Split view: a click in the source shows the matching place in the page.
 editor.addEventListener('click', () => {
-   if (!isSplit() || editor.selectionStart !== editor.selectionEnd) return;
-   const line = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
-   seekPreview(line);
+  if (!isSplit() || editor.selectionStart !== editor.selectionEnd) return;
+  const line = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
+  seekPreview(line);
 });
 editor.addEventListener('scroll', syncGutter, { passive: true });
 gutterLines.addEventListener('click', (e) => {
@@ -1207,33 +1286,33 @@ $('theme').addEventListener('click', () => {
   void refresh(); // frames pick up the new theme
 });
 helpBtn.addEventListener('click', () => {
-   if (helpMenu.hidden) openHelpMenu();
-   else closeHelpMenu();
+  if (helpMenu.hidden) openHelpMenu();
+  else closeHelpMenu();
 });
 helpMenu.addEventListener('keydown', (e) => {
-   const items = [...helpMenu.querySelectorAll<HTMLButtonElement>('.menu-item')];
-   if (items.length === 0) return;
-   const at = items.findIndex((b) => b === document.activeElement);
-   let next: number;
-   if (e.key === 'ArrowDown') next = (at + 1) % items.length;
-   else if (e.key === 'ArrowUp') next = at <= 0 ? items.length - 1 : at - 1;
-   else if (e.key === 'Home') next = 0;
-   else if (e.key === 'End') next = items.length - 1;
-   else if (e.key === 'Escape') {
-     e.preventDefault();
-     closeHelpMenu(true);
-     return;
-   } else if (e.key === 'Tab') {
-     closeHelpMenu();
-     return;
-   } else return;
-   e.preventDefault();
-   items[next]?.focus();
+  const items = [...helpMenu.querySelectorAll<HTMLButtonElement>('.menu-item')];
+  if (items.length === 0) return;
+  const at = items.findIndex((b) => b === document.activeElement);
+  let next: number;
+  if (e.key === 'ArrowDown') next = (at + 1) % items.length;
+  else if (e.key === 'ArrowUp') next = at <= 0 ? items.length - 1 : at - 1;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = items.length - 1;
+  else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeHelpMenu(true);
+    return;
+  } else if (e.key === 'Tab') {
+    closeHelpMenu();
+    return;
+  } else return;
+  e.preventDefault();
+  items[next]?.focus();
 });
 document.addEventListener('pointerdown', (e) => {
-   if (helpMenu.hidden) return;
-   const t = e.target;
-   if (t instanceof Node && !helpMenu.contains(t) && !helpBtn.contains(t)) closeHelpMenu();
+  if (helpMenu.hidden) return;
+  const t = e.target;
+  if (t instanceof Node && !helpMenu.contains(t) && !helpBtn.contains(t)) closeHelpMenu();
 });
 diagSummary.addEventListener('click', () => {
   openInspectorAt('diag');
@@ -1272,10 +1351,10 @@ const isTyping = (t: EventTarget | null): boolean =>
 
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]')) return;
-   if (e.key === 'Escape' && !helpMenu.hidden) {
-     closeHelpMenu(true);
-     return;
-   }
+  if (e.key === 'Escape' && !helpMenu.hidden) {
+    closeHelpMenu(true);
+    return;
+  }
   const mod = e.ctrlKey || e.metaKey;
   const key = e.key.toLowerCase();
   if (mod && e.shiftKey && !e.altKey && key === 'u') {
@@ -1305,7 +1384,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === '?' && !isTyping(e.target)) {
     e.preventDefault();
-     openKeys();
+    openKeys();
   }
 });
 
@@ -1355,52 +1434,63 @@ document.addEventListener('drop', (e) => {
   if (f) void fromFile(f).then((d) => load(d));
 });
 
+let launched = false;
+
 window.launchQueue?.setConsumer((params) => {
-  const h = params.files[0];
-  if (h?.kind === 'file') void fromHandle(h as FileSystemFileHandle).then((d) => load(d));
+  const h = params.files?.[0];
+  if (!h || h.kind !== 'file') return;
+  launched = true;
+  void fromLaunchHandle(h).then(
+    (d) => {
+      if (d) load(d);
+    },
+    (e: unknown) => {
+      setStatus(`Could not open ${h.name}: ${e instanceof Error ? e.message : String(e)}`, true);
+    },
+  );
 });
 // Links between documents opened by URL stay in the app; Back and Forward work.
 preview.addEventListener('click', (e) => {
-   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-   const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
-   if (!(a instanceof HTMLAnchorElement)) return;
-   const target = docLinkTarget(a.getAttribute('href') ?? '', docUrl, location.href);
-    if (target === null) {
-      // Links to other sites open in a new tab, so the app and its draft stay put.
-      let u: URL | null = null;
-      try {
-        u = new URL(a.getAttribute('href') ?? '', docUrl ?? location.href);
-      } catch {
-        u = null;
-      }
-      if (u && (u.protocol === 'https:' || u.protocol === 'http:') && u.origin !== location.origin) {
-        e.preventDefault();
-        openExternal(u.href);
-      }
-      return;
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = e.target instanceof Element ? e.target.closest('a[href]') : null;
+  if (!(a instanceof HTMLAnchorElement)) return;
+  const target = docLinkTarget(a.getAttribute('href') ?? '', docUrl, location.href);
+  if (target === null) {
+    // Links to other sites open in a new tab, so the app and its draft stay put.
+    let u: URL | null = null;
+    try {
+      u = new URL(a.getAttribute('href') ?? '', docUrl ?? location.href);
+    } catch {
+      u = null;
     }
-   e.preventDefault();
-   navigateTo(target);
+    if (u && (u.protocol === 'https:' || u.protocol === 'http:') && u.origin !== location.origin) {
+      e.preventDefault();
+      openExternal(u.href);
+    }
+    return;
+  }
+  e.preventDefault();
+  navigateTo(target);
 });
 // Split view: a click in the page shows the matching place in the source.
 preview.addEventListener('click', (e) => {
-   if (!isSplit() || e.button !== 0) return;
-   if (!(window.getSelection()?.isCollapsed ?? true)) return; // the user is selecting text
-   const t = e.target instanceof Element ? e.target : null;
-   if (!t || t.closest(INTERACTIVE)) return;
-   const block = t.closest<HTMLElement>('[data-m2-line]');
-   if (!block || !preview.contains(block)) return;
-   const line = Number(block.dataset.m2Line);
-   if (Number.isFinite(line)) seekEditor(line);
+  if (!isSplit() || e.button !== 0) return;
+  if (!(window.getSelection()?.isCollapsed ?? true)) return; // the user is selecting text
+  const t = e.target instanceof Element ? e.target : null;
+  if (!t || t.closest(INTERACTIVE)) return;
+  const block = t.closest<HTMLElement>('[data-m2-line]');
+  if (!block || !preview.contains(block)) return;
+  const line = Number(block.dataset.m2Line);
+  if (Number.isFinite(line)) seekEditor(line);
 });
 window.addEventListener('popstate', () => {
-   if (!confirmDiscard()) {
-     history.pushState(null, '', currentHref);
-     return;
-   }
-   const p = new URLSearchParams(location.search).get('url');
-   if (p !== null && p !== '') void openUrl(p, 'none');
-   else openDraft('none');
+  if (!confirmDiscard()) {
+    history.pushState(null, '', currentHref);
+    return;
+  }
+  const p = new URLSearchParams(location.search).get('url');
+  if (p !== null && p !== '') void openUrl(p, 'none');
+  else openDraft('none');
 });
 
 // ---------------------------------------------------------------- start
@@ -1433,18 +1523,18 @@ function startDraft(): void {
   void refresh();
 }
 if (shared !== null) {
-   history.replaceState(null, '', location.pathname);
-   load({ name: `${params.get('title') ?? 'shared'}.md`, text: shared }, { kind: 'share' });
+  history.replaceState(null, '', location.pathname);
+  load({ name: `${params.get('title') ?? 'shared'}.md`, text: shared }, { kind: 'share' });
 } else if (urlParam !== null && urlParam !== '') {
-   setDocName(fileName);
-   void openUrl(urlParam, 'replace').then((ok) => {
-     if (ok) return;
-     history.replaceState(null, '', location.pathname);
-     currentHref = location.href;
-     startDraft();
-   });
+  setDocName(fileName);
+  void openUrl(urlParam, 'replace').then((ok) => {
+    if (ok || launched) return;
+    history.replaceState(null, '', location.pathname);
+    currentHref = location.href;
+    startDraft();
+  });
 } else {
-   startDraft();
+  startDraft();
 }
 
 // Offline support and update prompt.

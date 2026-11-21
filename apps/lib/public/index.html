@@ -13,6 +13,11 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src https:; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
+    <!--
+      This showcase intentionally renders locked, broken, unknown-type and hostile resources
+      to demonstrate fail-closed behavior; silence expected [Markdown2] console warnings.
+    -->
+    <meta name="markdown2-permissions" content="log-level silent" />
     <meta name="theme-color" content="#1c1a24" />
     <title>markdown2.js · Markdown2 for your own pages</title>
     <link rel="icon" href="../icon.svg" type="image/svg+xml" />

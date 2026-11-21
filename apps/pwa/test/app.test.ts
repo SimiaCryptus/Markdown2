@@ -1,7 +1,16 @@
-import { GrantSet, appliedSheets, composeCascade, defaultHandlers, parse, type ResourceNode } from '@markdown2/core';
+import {
+  GrantSet,
+  appliedSheets,
+  composeCascade,
+  createPermissionPolicy,
+  defaultHandlers,
+  parse,
+  type ResourceNode,
+} from '@markdown2/core';
 import { Encrypter } from 'age-encryption';
 import { describe, expect, it, vi } from 'vitest';
 import { createBrowserUriPolicy, createRegistry, type FetchLike } from '../src/decoders.js';
+import { fromLaunchHandle } from '../src/files.js';
 import { nextGate, runPipeline } from '../src/pipeline.js';
 import { SAMPLE } from '../src/sample.js';
 import { planSave } from '../src/save-plan.js';
@@ -94,6 +103,27 @@ describe('browser uri policy', () => {
     const r = await runPipeline(src, { registry: createRegistry(), grants: new GrantSet(), handlers, uriPolicy });
     expect(r.resources.get('0')?.result).toMatchObject({ state: 'failed', error: 'limit-exceeded' });
   });
+
+  it('supports PermissionPolicy wildcards, explicit http://localhost, and informative network errors', async () => {
+    const policy = createPermissionPolicy({
+      allowOrigins: ['https://*.example.org', 'http://localhost:4321'],
+      logLevel: 'silent',
+    });
+    const okFetch = fakeFetch('ok-bytes');
+    const uriPolicy = createBrowserUriPolicy({ policy: () => policy, fetch: okFetch });
+
+    const localSrc = '<<<U type="text/plain" encoding="uri"\nhttp://localhost:4321/data.txt\nU\n';
+    const r1 = await runPipeline(localSrc, { registry: createRegistry(), grants: new GrantSet(), handlers, uriPolicy });
+    expect(r1.resources.get('0')?.result.state).toBe('decoded');
+
+    const failFetch = vi.fn<FetchLike>(() => Promise.reject(new TypeError('Failed to fetch')));
+    const failPolicy = createBrowserUriPolicy({ policy: () => policy, fetch: failFetch });
+    const subSrc = '<<<U type="text/plain" encoding="uri"\nhttps://cdn.example.org/x.txt\nU\n';
+    const r2 = await runPipeline(subSrc, { registry: createRegistry(), grants: new GrantSet(), handlers, uriPolicy: failPolicy });
+    expect(r2.resources.get('0')?.result.state).toBe('failed');
+    expect(r2.resources.get('0')?.result.detail).toContain('CORS');
+    expect(r2.diagnostics[0]?.message).toContain('Content-Security-Policy');
+  });
 });
 
 describe('save plan (§6.2, H.4)', () => {
@@ -122,5 +152,54 @@ describe('document stylesheets (style.md)', () => {
     expect(r.html).not.toContain('#ddd');
     const css = composeCascade({ author: appliedSheets(r.styles, new Map()) });
     expect(css).toContain('@scope (md2-document[data-m2-root]) {\n:scope{color:#ddd}\n}');
+  });
+});
+
+describe('launchQueue file handling', () => {
+  it('opens a file handle directly when readable', async () => {
+    const handle = {
+      kind: 'file',
+      name: 'notes.md',
+      getFile: async () => new File(['# Hello'], 'notes.md', { type: 'text/markdown' }),
+    } as unknown as FileSystemFileHandle;
+
+    const doc = await fromLaunchHandle(handle);
+    expect(doc).toMatchObject({ name: 'notes.md', text: '# Hello', handle });
+  });
+
+  it('retries via requestPermission when getFile throws NotAllowedError', async () => {
+    let granted = false;
+    const requestPermission = vi.fn(async () => {
+      granted = true;
+      return 'granted' as PermissionState;
+    });
+    const handle = {
+      kind: 'file',
+      name: 'notes.md',
+      getFile: async () => {
+        if (!granted) throw new DOMException('Permission denied', 'NotAllowedError');
+        return new File(['# Granted'], 'notes.md', { type: 'text/markdown' });
+      },
+      requestPermission,
+    } as unknown as FileSystemFileHandle;
+
+    const doc = await fromLaunchHandle(handle);
+    expect(requestPermission).toHaveBeenCalledWith({ mode: 'read' });
+    expect(doc).toMatchObject({ name: 'notes.md', text: '# Granted', handle });
+  });
+
+  it('rejects when permission is denied and ignores directory handles', async () => {
+    const denied = {
+      kind: 'file',
+      name: 'secret.md',
+      getFile: async () => {
+        throw new DOMException('Permission denied', 'NotAllowedError');
+      },
+      requestPermission: async () => 'denied' as PermissionState,
+    } as unknown as FileSystemFileHandle;
+    await expect(fromLaunchHandle(denied)).rejects.toThrow('Permission denied');
+
+    const dir = { kind: 'directory', name: 'docs' } as unknown as FileSystemDirectoryHandle;
+    await expect(fromLaunchHandle(dir)).resolves.toBeNull();
   });
 });

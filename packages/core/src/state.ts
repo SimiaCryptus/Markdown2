@@ -78,6 +78,8 @@ export function applyBatchGrant(grants: GrantSet, targets: readonly BatchTarget[
 export interface StateResult {
   state: DecodeState;
   error?: ErrorCode;
+  /** Human-readable reason for failure or lock (never contains secret key material). */
+  detail?: string;
   bytes?: Uint8Array;
 }
 
@@ -85,6 +87,8 @@ export interface DecodeOptions {
   registry: DecoderRegistry;
   grants: GrantSet;
   uriPolicy?: UriPolicy;
+  /** Optional upfront key resolver (e.g. from `PermissionPolicy.keysFor`). */
+  resolveKeys?: (node: ResourceNode, stage: number, decoderId: string) => readonly unknown[];
   quota: ByteQuota;
   signal?: AbortSignal;
 }
@@ -114,6 +118,9 @@ export function staticState(node: ResourceNode, opts: Omit<DecodeOptions, 'quota
       const uri = new TextDecoder().decode(node.resource.payload).trim();
       if (opts.uriPolicy.allows(uri)) continue;
     }
+    if (d.capability === 'key' && opts.resolveKeys && opts.resolveKeys(node, s, d.id).length > 0) {
+      continue;
+    }
     return { state: 'locked' };
   }
   return 'runnable';
@@ -128,6 +135,35 @@ export async function decodeResource(node: ResourceNode, opts: DecodeOptions): P
   let bytes = node.resource.payload;
   try {
     for (const [s, d] of stack.entries()) {
+      if (d.capability === 'key' && !opts.grants.has(node, s) && opts.resolveKeys) {
+        const candidates = opts.resolveKeys(node, s, d.id);
+        let decoded: Uint8Array | undefined;
+        let lastErr: unknown;
+        for (const grant of candidates) {
+          try {
+            decoded = await d.decode(bytes, {
+              quota: opts.quota,
+              ...(opts.signal ? { signal: opts.signal } : {}),
+              ...(opts.uriPolicy ? { uriPolicy: opts.uriPolicy } : {}),
+              grant,
+            });
+            break;
+          } catch (e) {
+            if (e instanceof KeyRejected) {
+              lastErr = e;
+              continue;
+            }
+            throw e;
+          }
+        }
+        if (decoded === undefined) {
+          throw lastErr instanceof KeyRejected
+            ? lastErr
+            : new KeyRejected('none of the provided keys decrypted this resource');
+        }
+        bytes = decoded;
+        continue;
+      }
       const ctx = {
         quota: opts.quota,
         ...(opts.signal ? { signal: opts.signal } : {}),
@@ -137,10 +173,11 @@ export async function decodeResource(node: ResourceNode, opts: DecodeOptions): P
       bytes = await d.decode(bytes, ctx);
     }
   } catch (e) {
-    if (e instanceof LimitExceeded) return { state: 'failed', error: 'limit-exceeded' };
-    if (e instanceof KeyRejected) return { state: 'locked', error: 'key-rejected' };
-    if (e instanceof DecodeError) return { state: 'failed', error: e.code };
-    return { state: 'failed', error: 'decode-error' };
+    const detail = e instanceof Error ? e.message : String(e);
+    if (e instanceof LimitExceeded) return { state: 'failed', error: 'limit-exceeded', detail };
+    if (e instanceof KeyRejected) return { state: 'locked', error: 'key-rejected', detail };
+    if (e instanceof DecodeError) return { state: 'failed', error: e.code, detail };
+    return { state: 'failed', error: 'decode-error', detail };
   }
   return { state: 'decoded', bytes };
 }

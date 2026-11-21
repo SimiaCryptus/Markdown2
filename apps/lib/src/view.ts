@@ -6,9 +6,20 @@ import {
   collectResources,
   collectStyles,
   composeCascade,
+  createPermissionPolicy,
   DEFAULT_LIMITS,
+  DID_YOU_MEAN,
   GrantSet,
+  hasHandler,
+  logBlockedFetch,
+  logDecodeFailure,
+  logHandlerError,
+  logLockedKey,
+  logUnsupportedResource,
+  mergePermissions,
   parse,
+  parsePermissionsMeta,
+  readPagePermissions,
   renderHtml,
   resolveDocument,
   safeSaveName,
@@ -19,13 +30,16 @@ import {
   type DecoderRegistry,
   type Diagnostic,
   type Limits,
+  type LogLevel,
+  type PermissionPolicy,
+  type PermissionsConfig,
   type ResolvedResource,
   type ResourceNode,
   type StyleModel,
   type UriPolicy,
 } from '@markdown2/core';
 import { defaultCss } from './css.js';
-import { createBrowserUriPolicy, createRegistry, isKeyGrant, resolveRemoteUri, type KeyGrant } from './decoders.js';
+import { createBrowserUriPolicy, createRegistry, diagnoseRemoteUri, isKeyGrant, type KeyGrant } from './decoders.js';
 import { builtinHandlers, coreRegistry, handlerMap, type Md2Handler, type RemoteNeed } from './handlers.js';
 
 /**
@@ -78,8 +92,19 @@ export interface ViewState {
 export interface MountOptions {
   handlers?: readonly Md2Handler[];
   decoders?: readonly Decoder[];
-  /** `https:` origins trusted without asking (uri fetches and remote views). */
+  /**
+   * Origins trusted without asking (uri fetches and remote views).
+   * Supports exact origins (`'https://example.com'`), wildcards (`'https://*.example.com'`),
+   * `'self'`, `'*'`, and explicit `http:` origins (e.g. `'http://localhost:3000'`).
+   */
   allowOrigins?: Iterable<string>;
+  /**
+   * Upfront permission whitelist (origins, fetch/embed split, `allowHttp`, `allowSameOriginEmbed`,
+   * upfront `keys`, `documentStyles`, and `logLevel`). Merged with any `<meta name="markdown2-permissions">` in the page.
+   */
+  permissions?: PermissionsConfig;
+  /** Console logging level for blocked permissions and load failures. Default `'warn'`. */
+  logLevel?: LogLevel;
   /** Base for relative `uri` references. */
   baseUrl?: string | URL;
   limits?: Partial<Limits>;
@@ -161,15 +186,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-
-function normaliseOrigin(o: string): string | null {
-  try {
-    const u = new URL(o);
-    return u.protocol === 'https:' ? u.origin : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Download bytes as `application/octet-stream`, so the browser never renders them by type. */
 export function downloadBytes(bytes: Uint8Array, name: string): void {
@@ -342,10 +358,9 @@ export function defaultConsent(req: ConsentRequest): Promise<ConsentAnswer> {
         el(
           'p',
           undefined,
-          `“${req.resource.label}” ${what} ${req.host}. That site will learn that you opened this page. ${
-            req.reason === 'fetch'
-              ? 'Whatever it sends is treated as the declared type, nothing else.'
-              : 'It runs in a sandboxed frame and cannot reach this page.'
+          `“${req.resource.label}” ${what} ${req.host}. That site will learn that you opened this page. ${req.reason === 'fetch'
+            ? 'Whatever it sends is treated as the declared type, nothing else.'
+            : 'It runs in a sandboxed frame and cannot reach this page.'
           }`,
         ),
       );
@@ -412,6 +427,7 @@ class View implements Markdown2View {
   private readonly registry: DecoderRegistry;
   private readonly handlerList: Md2Handler[];
   private readonly handlerByType: Map<string, Md2Handler>;
+  private readonly policy: PermissionPolicy;
   private readonly uriPolicy: UriPolicy;
   private readonly limits: Limits;
   private readonly baseUrl: URL | null;
@@ -419,7 +435,6 @@ class View implements Markdown2View {
   private readonly inline: boolean;
   private grants = new GrantSet();
   private embeds = new GrantSet();
-  private readonly origins = new Set<string>();
   private entries = new Map<string, ResolvedResource>();
   private diagnostics: Diagnostic[] = [];
   private styles: StyleModel | null = null;
@@ -434,14 +449,6 @@ class View implements Markdown2View {
     private src: string,
     private readonly opts: MountOptions,
   ) {
-    for (const o of opts.allowOrigins ?? []) {
-      const n = normaliseOrigin(o);
-      if (n !== null) this.origins.add(n);
-    }
-    this.handlerList = [...builtinHandlers(), ...(opts.handlers ?? [])];
-    this.handlerByType = handlerMap(this.handlerList);
-    this.registry = createRegistry(opts.decoders ?? []);
-    this.limits = { ...DEFAULT_LIMITS, ...opts.limits };
     let base: URL | null = null;
     if (opts.baseUrl !== undefined) {
       try {
@@ -450,11 +457,28 @@ class View implements Markdown2View {
         base = null;
       }
     }
+    const mergedPerms = mergePermissions(readPagePermissions(), opts.permissions, {
+      ...(opts.allowOrigins !== undefined ? { allowOrigins: opts.allowOrigins } : {}),
+      ...(opts.documentStyles !== undefined ? { documentStyles: opts.documentStyles } : {}),
+      ...(opts.logLevel !== undefined ? { logLevel: opts.logLevel } : {}),
+    });
+    this.policy = createPermissionPolicy(mergedPerms, {
+      ...(base !== null ? { selfOrigin: base.origin } : {}),
+    });
+    if (opts.baseUrl !== undefined && base === null) {
+      this.policy.warn(
+        `Ignored invalid baseUrl "${String(opts.baseUrl)}". Pass a full URL such as location.href or "https://example.com/".`,
+      );
+    }
+    this.handlerList = [...builtinHandlers(), ...(opts.handlers ?? [])];
+    this.handlerByType = handlerMap(this.handlerList);
+    this.registry = createRegistry(opts.decoders ?? []);
+    this.limits = { ...DEFAULT_LIMITS, ...opts.limits };
     this.baseUrl = base;
-    this.uriPolicy = createBrowserUriPolicy({ origins: () => this.origins, base: () => this.baseUrl });
+    this.uriPolicy = createBrowserUriPolicy({ policy: this.policy, base: () => this.baseUrl });
     this.consent = opts.consent ?? defaultConsent;
     this.inline = opts.inlineControls !== false;
-    this.docStyles = opts.documentStyles !== false;
+    this.docStyles = this.policy.documentStyles;
 
     this.host = el('div', 'markdown2-host');
     target.replaceChildren(this.host);
@@ -477,7 +501,38 @@ class View implements Markdown2View {
   // ---------------------------------------------------------------- rendering
 
   private remoteAllowed(node: ResourceNode | undefined, origin: string): boolean {
-    return (node !== undefined && this.embeds.has(node, 0)) || this.origins.has(origin);
+    return (node !== undefined && this.embeds.has(node, 0)) || this.policy.allowsEmbed(origin, node);
+  }
+
+  private logUnloaded(entries: readonly ResolvedResource[], handledTypes: ReadonlySet<string>): void {
+    for (const e of entries) {
+      const { node, result } = e;
+      if (result.state === 'locked') {
+        const gate = gatedStages(node, this.registry, this.grants)[0] ?? firstCapability(node, this.registry);
+        if (gate?.decoder.id === 'uri') {
+          const rawUri = new TextDecoder().decode(node.resource.payload).trim();
+          const diag = diagnoseRemoteUri(rawUri, this.baseUrl, { policy: this.policy });
+          logBlockedFetch(this.policy, node, rawUri, diag.url?.origin ?? null, diag.reason);
+        } else if (gate !== null) {
+          logLockedKey(this.policy, node, gate.decoder.id, result.error === 'key-rejected');
+        }
+      } else if (result.state === 'unsupported') {
+        logUnsupportedResource(this.policy, node, 'encoding');
+      } else if (result.state === 'failed') {
+        logDecodeFailure(this.policy, node, result.error ?? 'decode-error', result.detail);
+      } else if (
+        result.state === 'decoded' &&
+        node.rel !== 'metadata' &&
+        node.rel !== 'stylesheet' &&
+        node.rel !== 'attachment' &&
+        !hasHandler(handledTypes, node.resource.type)
+      ) {
+        const essence = typeEssence(node.resource.type);
+        const suggestion =
+          essence !== undefined && Object.hasOwn(DID_YOU_MEAN, essence) ? DID_YOU_MEAN[essence] : undefined;
+        logUnsupportedResource(this.policy, node, 'type', suggestion);
+      }
+    }
   }
 
   private async render(): Promise<void> {
@@ -490,22 +545,31 @@ class View implements Markdown2View {
       const doc = parse(this.src, { limits: this.limits });
       const diagnostics: Diagnostic[] = [...doc.diagnostics];
       const quota = new ByteQuota(this.limits.maxDecodedBytes);
-      const handlers = coreRegistry(this.handlerList, (node, origin) => this.remoteAllowed(node, origin));
+      const handlers = coreRegistry(this.handlerList, (node, origin) => this.remoteAllowed(node, origin), this.policy);
+      const handledTypes = handlers.types('view');
       const resolved = await resolveDocument(doc, {
         registry: this.registry,
         grants: this.grants,
         uriPolicy: this.uriPolicy,
+        resolveKeys: (node, _stage, decoderId) => this.policy.keysFor(node, decoderId),
         limits: this.limits,
-        handledTypes: handlers.types('view'),
+        handledTypes,
         diagnostics,
         quota,
         signal: ctl.signal,
       });
-      const html = await renderHtml(resolved, { handlers });
+      const html = await renderHtml(resolved, {
+        handlers,
+        onHandlerError: (info) => {
+          logHandlerError(this.policy, info);
+        },
+      });
       if (mine !== this.seq || this.destroyed) return;
       const styles = collectStyles(resolved);
       diagnostics.push(...styles.diagnostics);
-      this.entries = new Map(collectResources(resolved).map((e) => [e.node.id, e] as const));
+      const flat = collectResources(resolved);
+      this.logUnloaded(flat, handledTypes);
+      this.entries = new Map(flat.map((e) => [e.node.id, e] as const));
       this.diagnostics = diagnostics;
       this.styles = styles;
       this.quotaLeft = Math.max(0, quota.limit - quota.used);
@@ -515,6 +579,7 @@ class View implements Markdown2View {
       this.emit();
     } catch (e) {
       if (mine !== this.seq || this.destroyed) return;
+      this.policy.error(`Document render failed: ${message(e)}`);
       this.surface.textContent = `Markdown2 could not render this document: ${message(e)}`;
     }
   }
@@ -524,7 +589,8 @@ class View implements Markdown2View {
     const author = this.docStyles ? appliedSheets(this.styles, selectionFor(this.styles)) : [];
     try {
       this.cascade.replaceSync(composeCascade({ author, quota: new ByteQuota(this.quotaLeft) }));
-    } catch {
+    } catch (e) {
+      this.policy.warn(`Document stylesheets could not be applied: ${message(e)}`);
       this.cascade.replaceSync('');
     }
   }
@@ -533,12 +599,12 @@ class View implements Markdown2View {
     if (e.result.state !== 'decoded' || e.result.bytes === undefined) return null;
     const type = typeEssence(e.node.resource.type);
     if (type === undefined) return null;
-    return this.handlerByType.get(type)?.remote?.(e.result.bytes, type) ?? null;
+    return this.handlerByType.get(type)?.remote?.(e.result.bytes, type, this.policy) ?? null;
   }
 
   private uriTarget(node: ResourceNode): { origin: string | null; host: string } {
     const uri = new TextDecoder().decode(node.resource.payload).trim();
-    const u = resolveRemoteUri(uri, this.baseUrl);
+    const u = diagnoseRemoteUri(uri, this.baseUrl, { policy: this.policy }).url;
     return u === null ? { origin: null, host: uri } : { origin: u.origin, host: u.host };
   }
 
@@ -615,7 +681,7 @@ class View implements Markdown2View {
     return {
       resources: [...this.entries.values()].map((e) => this.info(e)),
       diagnostics: [...this.diagnostics],
-      origins: [...this.origins],
+      origins: this.policy.allowedOrigins(),
     };
   }
 
@@ -638,7 +704,7 @@ class View implements Markdown2View {
     if (gate.decoder.id === 'uri') {
       const t = this.uriTarget(node);
       const ans = await this.consent({ kind: 'remote', resource: this.info(e), origin: t.origin, host: t.host, reason: 'fetch' });
-      if (ans === 'always' && t.origin !== null) this.origins.add(t.origin);
+      if (ans === 'always' && t.origin !== null) this.policy.allowOrigin(t.origin);
       else if (ans === 'once' || ans === 'always') this.grants.grant(node, gate.stage);
       else return false;
       await this.render();
@@ -697,7 +763,7 @@ class View implements Markdown2View {
         host: new URL(need.origin).host,
         reason: 'view',
       }));
-    if (ans === 'always') this.origins.add(need.origin);
+    if (ans === 'always') this.policy.allowOrigin(need.origin);
     else if (ans === 'once') this.embeds.grant(e.node, 0);
     else return false;
     await this.render();
@@ -705,15 +771,13 @@ class View implements Markdown2View {
   }
 
   async allowOrigin(origin: string): Promise<void> {
-    const n = normaliseOrigin(origin);
-    if (n === null) throw new Error(`not an https: origin: ${origin}`);
-    this.origins.add(n);
+    const res = this.policy.allowOrigin(origin);
+    if (!res.ok) throw new Error(res.warning ?? `invalid origin rule: ${origin}`);
     await this.render();
   }
 
   async revokeOrigin(origin: string): Promise<void> {
-    const n = normaliseOrigin(origin);
-    if (n !== null) this.origins.delete(n);
+    this.policy.revokeOrigin(origin);
     await this.render();
   }
 
@@ -772,11 +836,23 @@ export function dedent(text: string): string {
  * Define `<markdown2-view>`. Its source is the text of a child
  * `<script type="text/markdown">` (HTML would otherwise parse `<<<TOKEN` as a tag).
  *
- * Attributes: `theme`, `allow-origins` (space-separated), `inline-controls="false"`,
- * `document-styles="false"`. The live view is on `element.view`.
+ * Attributes:
+ * - `theme`: `"auto" | "light" | "dark"`
+ * - `allow-origins`: space-separated origin rules (`https://...`, `https://*.example.com`, `self`, `*`, `http://localhost:...`)
+ * - `allow-fetch`: space-separated origin rules for `encoding="uri"` fetches
+ * - `allow-embed`: space-separated origin rules for remote views/embeds
+ * - `allow-http`: boolean attribute allowing plain `http:` origins
+ * - `allow-same-origin-embed`: boolean attribute allowing same-origin `text/uri-list` frames
+ * - `permissions`: JSON or directive string (same syntax as `<meta name="markdown2-permissions">`)
+ * - `base-url`: base URL for relative `uri` references (defaults to `document.baseURI`)
+ * - `log-level`: `"warn" | "debug" | "silent"`
+ * - `inline-controls="false"`, `document-styles="false"`
+ *
+ * The live view is on `element.view`.
  */
 export function defineElement(name = 'markdown2-view', defaults: MountOptions = {}): void {
   if (typeof customElements === 'undefined' || customElements.get(name) !== undefined) return;
+  const splitList = (attr: string | null): string[] => (attr ?? '').split(/\s+/).filter((s) => s !== '');
   class Markdown2Element extends HTMLElement {
     #view: Markdown2View | null = null;
     #src = '';
@@ -797,13 +873,39 @@ export function defineElement(name = 'markdown2-view', defaults: MountOptions = 
       const script = this.querySelector('script[type="text/markdown"], script[type="text/markdown2"]');
       if (script) this.#src = dedent(script.textContent ?? '');
       const theme = this.getAttribute('theme');
-      const origins = (this.getAttribute('allow-origins') ?? '').split(/\s+/).filter((s) => s !== '');
+      const origins = splitList(this.getAttribute('allow-origins'));
+      const fetchOrigins = splitList(this.getAttribute('allow-fetch'));
+      const embedOrigins = splitList(this.getAttribute('allow-embed'));
+      const permAttr = this.getAttribute('permissions');
+      const logAttr = this.getAttribute('log-level');
+      const logLevel: LogLevel | undefined =
+        logAttr === 'silent' || logAttr === 'warn' || logAttr === 'debug' ? logAttr : undefined;
+      const baseUrlAttr = this.getAttribute('base-url');
+      const baseUrl =
+        baseUrlAttr !== null && baseUrlAttr.trim() !== ''
+          ? baseUrlAttr.trim()
+          : (defaults.baseUrl ?? (typeof document !== 'undefined' && document.baseURI ? document.baseURI : undefined));
+      const attrPerms = mergePermissions(
+        defaults.permissions,
+        permAttr ? parsePermissionsMeta(permAttr) : null,
+        {
+          ...(origins.length > 0 ? { allowOrigins: origins } : {}),
+          ...(fetchOrigins.length > 0 ? { allowFetch: fetchOrigins } : {}),
+          ...(embedOrigins.length > 0 ? { allowEmbed: embedOrigins } : {}),
+          ...(this.hasAttribute('allow-http') ? { allowHttp: this.getAttribute('allow-http') !== 'false' } : {}),
+          ...(this.hasAttribute('allow-same-origin-embed')
+            ? { allowSameOriginEmbed: this.getAttribute('allow-same-origin-embed') !== 'false' }
+            : {}),
+          ...(logLevel !== undefined ? { logLevel } : {}),
+        },
+      );
       const container = document.createElement('div');
       this.replaceChildren(container);
       this.#view = mount(container, this.#src, {
         ...defaults,
         ...(theme === 'light' || theme === 'dark' || theme === 'auto' ? { theme } : {}),
-        allowOrigins: [...(defaults.allowOrigins ?? []), ...origins],
+        ...(baseUrl !== undefined ? { baseUrl } : {}),
+        permissions: attrPerms,
         ...(this.getAttribute('inline-controls') === 'false' ? { inlineControls: false } : {}),
         ...(this.getAttribute('document-styles') === 'false' ? { documentStyles: false } : {}),
       });

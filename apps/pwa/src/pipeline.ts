@@ -11,6 +11,7 @@ import {
   type DecoderRegistry,
   type Diagnostic,
   type GrantSet,
+  type HandlerErrorInfo,
   type HandlerRegistry,
   type ResolvedNode,
   type ResolvedResource,
@@ -24,11 +25,13 @@ export interface PipelineOptions {
   grants: GrantSet;
   handlers: HandlerRegistry;
   uriPolicy?: UriPolicy;
+  resolveKeys?: (node: ResourceNode, stage: number, decoderId: string) => readonly unknown[];
+  onHandlerError?: (info: HandlerErrorInfo) => void;
   signal?: AbortSignal;
   /** Presentation for fenced code, such as the Monaco frames. */
   codeFence?: CodeFenceRenderer;
-   /** Mark rendered blocks with their source line (`data-m2-line`), for editor/page sync. */
-   sourceLines?: boolean;
+  /** Mark rendered blocks with their source line (`data-m2-line`), for editor/page sync. */
+  sourceLines?: boolean;
 }
 
 export interface PipelineResult {
@@ -55,12 +58,14 @@ export async function runPipeline(src: string, o: PipelineOptions): Promise<Pipe
     quota,
     handledTypes: o.handlers.types('view'),
     ...(o.uriPolicy ? { uriPolicy: o.uriPolicy } : {}),
+    ...(o.resolveKeys ? { resolveKeys: o.resolveKeys } : {}),
     ...(o.signal ? { signal: o.signal } : {}),
   });
   const html = await renderHtml(resolved, {
     handlers: o.handlers,
     ...(o.codeFence ? { codeFence: o.codeFence } : {}),
-     ...(o.sourceLines ? { sourceLines: true } : {}),
+    ...(o.sourceLines ? { sourceLines: true } : {}),
+    ...(o.onHandlerError ? { onHandlerError: o.onHandlerError } : {}),
   });
   const resources = new Map(collectResources(resolved).map((e) => [e.node.id, e] as const));
   const styles = collectStyles(resolved);

@@ -40,6 +40,11 @@ export function installFrameHost(isDark: () => boolean): void {
       host?.setAttribute('data-m2-ready', '');
     } else if (data.type === 'm2-error') {
       const msg = typeof data.message === 'string' ? data.message.slice(0, 300) : 'could not render';
+      const kind = frame.dataset.m2Frame ?? 'unknown';
+      console.warn(
+        `[Markdown2] Sandboxed frame (${kind}) failed to render: ${msg}. ` +
+          `If this frame loads remote assets, check Remote… / permissions.allowOrigins and your page's Content-Security-Policy (frame-src / connect-src).`,
+      );
       host?.setAttribute('data-m2-error', msg);
     }
   });

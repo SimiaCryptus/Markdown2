@@ -4,6 +4,7 @@ import { renderMarkdownBlocks, type RenderedBlock } from './markdown.js';
 import { analyseRels, effectiveRel, relToken, type KnownRel } from './rel.js';
 import { fallbackFor, typeEssence, type Fallback, type ResolvedNode, type ResolvedResource } from './runtime.js';
 import { safeSaveName } from './save.js';
+import type { ResourceNode } from './types.js';
 
 /**
  * Renders the M2SS styling tree (style.md §4): `md2-document`, `md2-section`,
@@ -11,6 +12,13 @@ import { safeSaveName } from './save.js';
  */
 /** Presentation hook for fenced code that no compatibility alias handles (§7.2). */
 export type CodeFenceRenderer = (lang: string, body: string, info: string) => Promise<string | null>;
+
+export interface HandlerErrorInfo {
+  node?: ResourceNode;
+  type: string;
+  error: unknown;
+  fence?: boolean;
+}
 
 export interface RenderOptions {
   handlers?: HandlerRegistry;
@@ -26,11 +34,14 @@ export interface RenderOptions {
    * it to keep source and page in step. Off by default.
    */
   sourceLines?: boolean;
+  /** Called whenever a handler throws during rendering (instead of swallowing the error silently). */
+  onHandlerError?: (info: HandlerErrorInfo) => void;
 }
 interface Ctx {
   handlers: HandlerRegistry;
   codeFence?: CodeFenceRenderer;
   sourceLines: boolean;
+  onHandlerError?: (info: HandlerErrorInfo) => void;
 }
 
 const encoder = new TextEncoder();
@@ -99,7 +110,8 @@ async function renderChild(entry: ResolvedResource, ctx: Ctx, rel: KnownRel, bas
     const html = await handler.render(result.bytes, { type, node, children });
     const inner = handler.sandbox === true ? sandboxFrame(html, node.resource.attributes.get('title') ?? type) : html;
     return { html: `<md2-view>${inner}</md2-view>` };
-  } catch {
+  } catch (error) {
+    ctx.onHandlerError?.({ node, type, error });
     return fallbackChild(entry, 'handler-error');
   }
 }
@@ -113,7 +125,8 @@ async function renderFence(info: string, body: string, ctx: Ctx): Promise<string
     try {
       const html = await handler.render(encoder.encode(body), { type, children: () => Promise.resolve('') });
       return handler.sandbox === true ? sandboxFrame(html, lang) : html;
-    } catch {
+    } catch (error) {
+      ctx.onHandlerError?.({ type, error, fence: true });
       // Not usable by the aliased handler: show it as ordinary code.
     }
   }
@@ -254,6 +267,7 @@ export function renderHtml(nodes: readonly ResolvedNode[], opts: RenderOptions =
     handlers: opts.handlers ?? defaultHandlers(),
     sourceLines: opts.sourceLines === true,
     ...(opts.codeFence ? { codeFence: opts.codeFence } : {}),
+    ...(opts.onHandlerError ? { onHandlerError: opts.onHandlerError } : {}),
   };
   return renderDocument(nodes, ctx, ' data-m2-root', 0);
 }

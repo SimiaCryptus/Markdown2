@@ -58,6 +58,8 @@ export interface ResolveOptions {
   registry?: DecoderRegistry;
   grants?: GrantSet;
   uriPolicy?: UriPolicy;
+  /** Optional upfront key resolver (e.g. from `PermissionPolicy.keysFor`). */
+  resolveKeys?: (node: ResourceNode, stage: number, decoderId: string) => readonly unknown[];
   limits?: Partial<Limits>;
   /** Exact type strings that have a handler. */
   handledTypes?: ReadonlySet<string>;
@@ -116,12 +118,24 @@ export async function resolveDocument(doc: Document, opts: ResolveOptions = {}):
       let result = await decodeResource(child, {
         ...ctx,
         ...(opts.uriPolicy ? { uriPolicy: opts.uriPolicy } : {}),
+        ...(opts.resolveKeys ? { resolveKeys: opts.resolveKeys } : {}),
         ...(opts.signal ? { signal: opts.signal } : {}),
       });
       const entry: ResolvedResource = { kind: 'resource', node: child, result };
-      if (result.error === 'key-rejected') report(child, 'key-rejected', 'Key rejected; resource remains locked');
-      else if (result.state === 'failed' && !child.structuralError && result.error) {
-        report(child, result.error, `Decoding failed: ${result.error}`);
+      if (result.error === 'key-rejected') {
+        report(
+          child,
+          'key-rejected',
+          result.detail
+            ? `Key rejected (${result.detail}); resource remains locked`
+            : 'Key rejected; resource remains locked',
+        );
+      } else if (result.state === 'failed' && !child.structuralError && result.error) {
+        report(
+          child,
+          result.error,
+          result.detail ? `Decoding failed (${result.error}): ${result.detail}` : `Decoding failed: ${result.error}`,
+        );
       }
       if (result.state === 'decoded' && typeEssence(child.resource.type) === 'text/markdown') {
         if (depth + 1 > limits.maxDepth) {

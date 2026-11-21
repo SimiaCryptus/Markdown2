@@ -18,6 +18,36 @@ el.innerHTML = await marked.parse(source, { async: true }); // full pipeline (gz
 const view = mount(el, source, { onChange: (s) => … });    // live, with consent dialogs
 ```
 
+## Upfront Permission Whitelisting & Diagnostics
+
+Everything remains fail-closed by default, and consuming pages can whitelist permissions upfront in any of three ways:
+
+1. **JavaScript options (`mount`, `marked.parse`, `marked.use`, `new Marked`)**:
+   ```js
+   const view = mount(el, source, {
+     baseUrl: location.href,
+     permissions: {
+       allowOrigins: ['self', 'https://*.example.com', 'http://localhost:3000'],
+       allowFetch: ['https://cdn.example.com'],
+       allowEmbed: ['https://www.openstreetmap.org'],
+       keys: [{ kind: 'passphrase', value: 'secret' }],
+       logLevel: 'warn', // 'warn' (default) | 'debug' | 'silent'
+     },
+   });
+   ```
+2. **Custom element attributes (`<markdown2-view>`)**:
+   ```html
+   <markdown2-view allow-origins="self https://www.openstreetmap.org" allow-fetch="https://cdn.example.com">
+     <script type="text/markdown">...</script>
+   </markdown2-view>
+   ```
+3. **Page-level `<meta>` tag** (applies to every `marked` / `mount` / `<markdown2-view>` on the page):
+   ```html
+   <meta name="markdown2-permissions" content="allow-origins self https://example.com; allow-embed https://www.openstreetmap.org">
+   ```
+
+When a resource cannot load (blocked origin, missing `baseUrl`, plain `http:`, locked key, `requires-async`, network/CORS/CSP error, or handler error), `[Markdown2]` logs an actionable `console.warn` explaining what failed, why, and the exact configuration to fix it. Set `logLevel: 'silent'` to suppress console logging.
+
 The example page demonstrates every part: `marked.parse`, `async`, `mount()` with app-driven controls,
 the `<markdown2-view>` element, handlers, hooks and `walkTokens`.
 

@@ -2,11 +2,13 @@ import {
   defaultHandlers,
   encodeBase64,
   escapeHtml,
+  logBlockedEmbed,
   typeEssence,
   wavedromHandler,
   type CodeFenceRenderer,
   type Handler,
   type HandlerRegistry,
+  type PermissionPolicy,
   type ResourceNode,
 } from '@markdown2/core';
 import type { CanonicalJson, Value } from '@datacalc/core';
@@ -311,6 +313,8 @@ export interface PwaHandlerOptions {
    * The PWA answers from per-resource grants and the user's origin list.
    */
   remoteAllowed?: (node: ResourceNode | undefined, origin: string) => boolean;
+  /** Optional permission policy for actionable console logging when remote views are blocked. */
+  policy?: () => PermissionPolicy;
   /** The app's own origin. Pages from it are never framed: scripts there could reach the app. */
   appOrigin?: string;
 }
@@ -422,6 +426,8 @@ function pageHandler(o: PwaHandlerOptions): Handler {
         const title = ctx.node?.resource.attributes.get('title') ?? u.host;
         const href = escapeHtml(u.href);
         if (!(o.remoteAllowed?.(ctx.node, u.origin) ?? false)) {
+          const p = o.policy?.();
+          if (p) logBlockedEmbed(p, ctx.node, u.origin, u.host);
           resolve(
             `<div class="m2-embed m2-embed-pending"><span class="m2-embed-host">🌐 ${escapeHtml(u.host)}</span><span>Embedded page, not loaded.</span><a href="${href}" target="_blank" rel="noopener noreferrer nofollow">${href}</a><span class="m2-load-slot"></span></div>`,
           );
@@ -470,6 +476,10 @@ function chartHandler(o: PwaHandlerOptions): Handler {
         const spec = parseChart(bytes);
         const title = ctx.node?.resource.attributes.get('title') ?? spec.chartType;
         const allowed = o.remoteAllowed?.(ctx.node, GCHART_ORIGIN) ?? false;
+        if (!allowed) {
+          const p = o.policy?.();
+          if (p) logBlockedEmbed(p, ctx.node, GCHART_ORIGIN, 'Google Charts (www.gstatic.com)');
+        }
         const note = allowed
           ? 'Drawing with Google Charts…'
           : 'Google Chart, not loaded. Its data is shown below.';
@@ -514,6 +524,10 @@ function mapHandler(o: PwaHandlerOptions): Handler {
         const title = attrs?.get('title') ?? 'Map';
         const basemap = basemapFor(attrs?.get('basemap'));
         const allowed = o.remoteAllowed?.(ctx.node, MAP_ORIGIN) ?? false;
+        if (!allowed) {
+          const p = o.policy?.();
+          if (p) logBlockedEmbed(p, ctx.node, MAP_ORIGIN, 'OpenFreeMap (tiles.openfreemap.org)');
+        }
         const note = allowed ? 'Drawing the map…' : 'Map, not loaded. Its features are listed below.';
         const frame = allowed ? frameHtml('map', JSON.stringify(geo.json), title, basemap) : '';
         const slot = allowed ? '' : '<span class="m2-load-slot"></span>';
