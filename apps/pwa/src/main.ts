@@ -30,6 +30,14 @@ import {
 } from '@markdown2/core';
 import { createBrowserUriPolicy, createRegistry, diagnoseRemoteUri, resolveRemoteUri, type KeyGrant } from './decoders.js';
 import { DOCS, REPO } from './docs.js';
+import {
+  createSourceEditor,
+  type CursorInfo,
+  type EncryptPromptRequest,
+  type EncryptPromptResult,
+  type SourceEditor,
+  type WrapPromptResult,
+} from './editor.js';
 import { downloadBytes, fromFile, fromLaunchHandle, openDocument, saveDocument, type OpenedDocument } from './files.js';
 import { installFrameHost } from './frames.js';
 import { enhanceTables, resetGridState } from './grid.js';
@@ -52,12 +60,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return e;
 }
 
-const editor = $<HTMLTextAreaElement>('editor');
+const editorHost = $('editor-host');
 const preview = $('preview');
 const statusEl = $('status');
 const diagList = $('diag-list');
 const fileInput = $<HTMLInputElement>('file-input');
-const gutterLines = $('gutter-lines');
 const cursorEl = $('cursor');
 const wordsEl = $('words');
 const saveStateEl = $('save-state');
@@ -190,16 +197,26 @@ type Theme = 'auto' | 'light' | 'dark';
 const storedTheme = localStorage.getItem(THEME_KEY);
 let theme: Theme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'auto';
 
+const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+let sourceEditor: SourceEditor | null = null;
+
 function applyTheme(): void {
   if (theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
   const name = theme.charAt(0).toUpperCase() + theme.slice(1);
   $('theme-label').textContent = name;
   $('theme').title = `Theme: ${name} (click to change)`;
+  sourceEditor?.setTheme(isDark());
 }
 function isDark(): boolean {
-  return theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  return theme === 'dark' || (theme === 'auto' && colorSchemeQuery.matches);
 }
+colorSchemeQuery.addEventListener('change', () => {
+  if (theme === 'auto') {
+    sourceEditor?.setTheme(isDark());
+    void refresh();
+  }
+});
 installFrameHost(isDark);
 
 type View = 'write' | 'split' | 'read';
@@ -211,7 +228,10 @@ function setView(v: View): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-set-view]')) {
     b.setAttribute('aria-pressed', String(b.dataset.setView === v));
   }
-  if (v === 'write' || v === 'split') editor.focus({ preventScroll: true });
+  if (v === 'write' || v === 'split') {
+    sourceEditor?.layout();
+    sourceEditor?.focus();
+  }
 }
 
 function setInspector(open: boolean, remember = true): void {
@@ -239,57 +259,27 @@ function openInspectorAt(t: Tab): void {
   selectTab(t, true);
 }
 
-// ---------------------------------------------------------------- editor: gutter, cursor, counts
-let gutterCount = 0;
-let currentLine = 0;
-let diagLines = new Map<number, string[]>();
-
-function renderGutter(force = false): void {
-  const n = editor.value.split('\n').length;
-  if (!force && n === gutterCount) return;
-  gutterCount = n;
-  const frag = document.createDocumentFragment();
-  for (let i = 0; i < n; i++) {
-    const d = el('div', 'gl', String(i + 1));
-    const msgs = diagLines.get(i);
-    if (msgs) {
-      d.classList.add('diag');
-      d.title = msgs.join('\n');
-      d.dataset.line = String(i);
-    }
-    if (i === currentLine) d.classList.add('current');
-    frag.append(d);
-  }
-  gutterLines.replaceChildren(frag);
+// ---------------------------------------------------------------- editor: cursor, counts
+function getEditorText(): string {
+  return sourceEditor?.getValue() ?? '';
 }
 
-function syncGutter(): void {
-  gutterLines.style.transform = `translateY(${-editor.scrollTop}px)`;
-}
-
-function updateCursor(): void {
-  const pos = editor.selectionStart;
-  const before = editor.value.slice(0, pos);
-  const line = before.split('\n').length - 1;
-  const col = pos - (before.lastIndexOf('\n') + 1);
-  const selected = editor.selectionEnd - editor.selectionStart;
-  cursorEl.textContent = `Ln ${line + 1}, Col ${col + 1}${selected > 0 ? ` · ${selected} selected` : ''}`;
-  if (line !== currentLine) {
-    gutterLines.children[currentLine]?.classList.remove('current');
-    currentLine = line;
-    gutterLines.children[line]?.classList.add('current');
-  }
+function updateCursor(info?: CursorInfo): void {
+  const cur = info ?? sourceEditor?.getCursorInfo() ?? { line: 0, col: 0, selected: 0 };
+  cursorEl.textContent = `Ln ${cur.line + 1}, Col ${cur.col + 1}${cur.selected > 0 ? ` · ${cur.selected} selected` : ''}`;
 }
 
 function updateCounts(): void {
-  const t = editor.value.trim();
+  const raw = getEditorText();
+  const t = raw.trim();
   const words = t === '' ? 0 : t.split(/\s+/).length;
-  wordsEl.textContent = `${words.toLocaleString()} word${words === 1 ? '' : 's'} · ${editor.value.length.toLocaleString()} chars`;
+  wordsEl.textContent = `${words.toLocaleString()} word${words === 1 ? '' : 's'} · ${raw.length.toLocaleString()} chars`;
 }
 
 function updateSaveState(): void {
+  const value = getEditorText();
   if (docUrl !== null) {
-    const dirty = savedText !== editor.value;
+    const dirty = savedText !== value;
     saveStateEl.dataset.state = dirty ? 'dirty' : 'saved';
     saveStateEl.textContent = dirty
       ? `Edited copy from ${docUrl.host} · not autosaved`
@@ -299,7 +289,7 @@ function updateSaveState(): void {
   if (savedText === null) {
     saveStateEl.dataset.state = 'draft';
     saveStateEl.textContent = 'Local draft · autosaved';
-  } else if (savedText === editor.value) {
+  } else if (savedText === value) {
     saveStateEl.dataset.state = 'saved';
     saveStateEl.textContent = 'Saved';
   } else {
@@ -353,7 +343,7 @@ async function refresh(): Promise<void> {
   controller = ctl;
   const mine = ++seq;
   try {
-    const r = await runPipeline(editor.value, {
+    const r = await runPipeline(getEditorText(), {
       registry,
       grants,
       handlers,
@@ -390,7 +380,7 @@ function schedule(): void {
   clearTimeout(timer);
   timer = setTimeout(() => {
     timer = undefined;
-    if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
+    if (autosave) localStorage.setItem(DRAFT_KEY, getEditorText());
     updateCounts();
     void refresh();
   }, 250);
@@ -400,7 +390,7 @@ function flushDraft(): void {
   if (timer === undefined) return;
   clearTimeout(timer);
   timer = undefined;
-  if (autosave) localStorage.setItem(DRAFT_KEY, editor.value);
+  if (autosave) localStorage.setItem(DRAFT_KEY, getEditorText());
 }
 
 // ---------------------------------------------------------------- styles
@@ -785,6 +775,119 @@ function askRemote(label: string, where: string, alwaysHost: string | null, deta
 }
 
 
+function askEncrypt(req: EncryptPromptRequest): Promise<EncryptPromptResult | null> {
+  const dialog = $<HTMLDialogElement>('encrypt-dlg');
+  const form = dialog.querySelector('form');
+  if (!form) return Promise.resolve(null);
+  form.reset();
+  $('encrypt-title').textContent = req.compress ? 'Compress & encrypt with age' : 'Encrypt with age';
+  $('encrypt-desc').textContent = req.inResource
+    ? 'Encrypt this resource block in place.'
+    : 'Encrypt the selected text as a Markdown2 resource block.';
+  const keyInput = $<HTMLInputElement>('encrypt-key');
+  const keyLabel = $('encrypt-key-label');
+  const typeWrap = $('encrypt-type-wrap');
+  const typeInput = $<HTMLInputElement>('encrypt-type');
+  const titleInput = $<HTMLInputElement>('encrypt-title-input');
+  const wrapInput = $<HTMLInputElement>('encrypt-wrap');
+
+  typeWrap.hidden = req.inResource;
+  typeInput.value = req.defaultType;
+  titleInput.value = req.defaultTitle;
+  wrapInput.checked = req.defaultWrapped;
+  keyInput.type = 'password';
+  keyInput.placeholder = '';
+  keyLabel.textContent = 'Passphrase';
+
+  const onKindChange = (e: Event): void => {
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || t.name !== 'kind') return;
+    if (t.value === 'recipient') {
+      keyInput.type = 'text';
+      keyInput.placeholder = 'age1…';
+      keyLabel.textContent = 'age recipient';
+    } else {
+      keyInput.type = 'password';
+      keyInput.placeholder = '';
+      keyLabel.textContent = 'Passphrase';
+    }
+  };
+  form.addEventListener('change', onKindChange);
+
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      'close',
+      () => {
+        form.removeEventListener('change', onKindChange);
+        const data = new FormData(form);
+        const wrapped = wrapInput.checked;
+        form.reset(); // do not leave the key in the DOM
+        if (dialog.returnValue !== 'ok') {
+          resolve(null);
+          return;
+        }
+        const kind = data.get('kind') === 'recipient' ? 'recipient' : 'passphrase';
+        const rawKey = data.get('key');
+        const value = typeof rawKey === 'string' ? (kind === 'recipient' ? rawKey.trim() : rawKey) : '';
+        if (value === '') {
+          resolve(null);
+          return;
+        }
+        const rawType = data.get('type');
+        const rawTitle = data.get('title');
+        resolve({
+          key: { kind, value },
+          type: typeof rawType === 'string' && rawType.trim() !== '' ? rawType.trim() : req.defaultType,
+          title: typeof rawTitle === 'string' ? rawTitle.trim() : '',
+          wrapped,
+        });
+      },
+      { once: true },
+    );
+    dialog.returnValue = '';
+    dialog.showModal();
+    keyInput.focus();
+  });
+}
+
+function askWrap(): Promise<WrapPromptResult | null> {
+  const dialog = $<HTMLDialogElement>('wrap-dlg');
+  const form = dialog.querySelector('form');
+  if (!form) return Promise.resolve(null);
+  form.reset();
+  const typeInput = $<HTMLInputElement>('wrap-type');
+  const tokenInput = $<HTMLInputElement>('wrap-token');
+  const titleInput = $<HTMLInputElement>('wrap-title-input');
+  const wrapInput = $<HTMLInputElement>('wrap-compat');
+  typeInput.value = 'text/markdown';
+  tokenInput.value = 'RES';
+  titleInput.value = '';
+  wrapInput.checked = false;
+
+  return new Promise((resolve) => {
+    dialog.addEventListener(
+      'close',
+      () => {
+        const result: WrapPromptResult | null =
+          dialog.returnValue === 'ok'
+            ? {
+                type: typeInput.value.trim() || 'text/markdown',
+                token: tokenInput.value.trim() || 'RES',
+                title: titleInput.value.trim(),
+                wrapped: wrapInput.checked,
+              }
+            : null;
+        form.reset();
+        resolve(result);
+      },
+      { once: true },
+    );
+    dialog.returnValue = '';
+    dialog.showModal();
+    typeInput.focus();
+  });
+}
+
 function askKey(description: string): Promise<KeyGrant | null> {
   const dialog = $<HTMLDialogElement>('unlock');
   const form = dialog.querySelector('form');
@@ -921,20 +1024,11 @@ function decoratePreview(r: PipelineResult): void {
 // ---------------------------------------------------------------- diagnostics
 function jumpToLine(line: number): void {
   if (document.body.dataset.view === 'read') setView('split');
-  const lines = editor.value.split('\n');
-  let start = 0;
-  for (let k = 0; k < line && k < lines.length; k++) start += (lines[k]?.length ?? 0) + 1;
-  editor.focus();
-  editor.setSelectionRange(start, start + (lines[line]?.length ?? 0));
-  const lh = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22;
-  editor.scrollTop = Math.max(0, line * lh - editor.clientHeight / 3);
-  syncGutter();
-  updateCursor();
+  sourceEditor?.jumpToLine(line, true);
 }
 
 function showDiagnostics(diags: readonly Diagnostic[]): void {
   diagList.replaceChildren();
-  diagLines = new Map();
   const n = diags.length;
   const count = $('diag-count');
   count.textContent = String(n);
@@ -951,9 +1045,6 @@ function showDiagnostics(diags: readonly Diagnostic[]): void {
     const code = el('span', 'diag-code', d.nodeId === undefined ? d.code : `${d.code} · ${d.nodeId}`);
     const msg = el('span', 'diag-msg', d.message);
     if (jumpable) {
-      const arr = diagLines.get(d.line) ?? [];
-      arr.push(`${d.code}: ${d.message}`);
-      diagLines.set(d.line, arr);
       const b = el('button', 'diag');
       b.type = 'button';
       b.setAttribute('aria-label', `Line ${d.line + 1}: ${d.code}. ${d.message}. Jump to line.`);
@@ -970,7 +1061,7 @@ function showDiagnostics(diags: readonly Diagnostic[]): void {
     }
     diagList.append(li);
   }
-  renderGutter(true);
+  sourceEditor?.setDiagnostics(diags);
 }
 // ---------------------------------------------------------------- source/page sync (split view)
 /** Clicks on these never move the editor: they have their own job. */
@@ -997,16 +1088,7 @@ function seekPreview(line: number): void {
 }
 /** Put the caret at the start of `line` in the source, without selecting it. */
 function seekEditor(line: number): void {
-  const lines = editor.value.split('\n');
-  const target = Math.max(0, Math.min(line, lines.length - 1));
-  let start = 0;
-  for (let k = 0; k < target; k++) start += (lines[k]?.length ?? 0) + 1;
-  editor.focus({ preventScroll: true });
-  editor.setSelectionRange(start, start);
-  const lh = Number.parseFloat(getComputedStyle(editor).lineHeight) || 22;
-  editor.scrollTop = Math.max(0, target * lh - editor.clientHeight / 3);
-  syncGutter();
-  updateCursor();
+  sourceEditor?.jumpToLine(line, false);
 }
 
 
@@ -1019,7 +1101,7 @@ function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
     opening = null;
   }
   flushDraft();
-  editor.value = doc.text;
+  sourceEditor?.setValue(doc.text);
   setDocName(doc.name);
   fileHandle = doc.handle;
   docUrl = source.kind === 'url' ? source.url : null;
@@ -1042,10 +1124,6 @@ function load(doc: OpenedDocument, source: DocSource = { kind: 'file' }): void {
     history.replaceState(null, '', location.pathname);
   }
   currentHref = location.href;
-  editor.scrollTop = 0;
-  editor.setSelectionRange(0, 0);
-  syncGutter();
-  renderGutter(true);
   updateCursor();
   updateCounts();
   updateSaveState();
@@ -1060,7 +1138,7 @@ function openDoc(): void {
 }
 
 async function saveDoc(): Promise<void> {
-  const text = editor.value;
+  const text = getEditorText();
   try {
     const outcome = await saveDocument(text, fileName, fileHandle);
     if (outcome.kind === 'cancelled') {
@@ -1119,7 +1197,7 @@ function openKeys(): void {
 type Nav = 'push' | 'replace' | 'none';
 /** Unsaved edits to a URL document are not autosaved; ask before discarding them. */
 function confirmDiscard(): boolean {
-  if (autosave || savedText === null || savedText === editor.value) return true;
+  if (autosave || savedText === null || savedText === getEditorText()) return true;
   return confirm('This document was opened from a URL and your edits are not autosaved. Discard them?');
 }
 function urlParamFor(u: URL): string {
@@ -1245,23 +1323,25 @@ function closeHelpMenu(focusButton = false): void {
 }
 
 // ---------------------------------------------------------------- wiring
-editor.addEventListener('input', () => {
-  renderGutter();
-  updateCursor();
-  updateSaveState();
-  schedule();
-});
-for (const type of ['keyup', 'click', 'select', 'focus'] as const) editor.addEventListener(type, updateCursor);
-// Split view: a click in the source shows the matching place in the page.
-editor.addEventListener('click', () => {
-  if (!isSplit() || editor.selectionStart !== editor.selectionEnd) return;
-  const line = editor.value.slice(0, editor.selectionStart).split('\n').length - 1;
-  seekPreview(line);
-});
-editor.addEventListener('scroll', syncGutter, { passive: true });
-gutterLines.addEventListener('click', (e) => {
-  const t = (e.target as HTMLElement).closest<HTMLElement>('.gl.diag');
-  if (t?.dataset.line !== undefined) jumpToLine(Number(t.dataset.line));
+sourceEditor = createSourceEditor({
+  container: editorHost,
+  dark: isDark(),
+  onChange: () => {
+    updateSaveState();
+    schedule();
+  },
+  onCursorChange: (info) => {
+    updateCursor(info);
+  },
+  onLineClick: (line0) => {
+    if (isSplit()) seekPreview(line0);
+  },
+  onStatus: (msg, sticky) => {
+    setStatus(msg, sticky);
+  },
+  askEncrypt,
+  askWrap,
+  askDecryptKey: askKey,
 });
 
 $('open').addEventListener('click', openDoc);
@@ -1347,7 +1427,8 @@ const isTyping = (t: EventTarget | null): boolean =>
   t instanceof HTMLInputElement ||
   t instanceof HTMLTextAreaElement ||
   t instanceof HTMLSelectElement ||
-  (t instanceof HTMLElement && t.isContentEditable);
+  (t instanceof HTMLElement && t.isContentEditable) ||
+  (sourceEditor?.containsTarget(t) ?? false);
 
 document.addEventListener('keydown', (e) => {
   if (document.querySelector('dialog[open]')) return;
@@ -1396,7 +1477,7 @@ let dragDepth = 0;
 let dragSource: 'outside' | 'editor' | 'app' = 'outside';
 const hasFiles = (e: DragEvent): boolean => e.dataTransfer?.types.includes('Files') ?? false;
 document.addEventListener('dragstart', (e) => {
-  dragSource = e.target === editor ? 'editor' : 'app';
+  dragSource = sourceEditor?.containsTarget(e.target) ? 'editor' : 'app';
   document.body.dataset.dragging = ''; // frames ignore the pointer while dragging
 });
 document.addEventListener('dragend', () => {
@@ -1420,12 +1501,12 @@ document.addEventListener('dragover', (e) => {
     return;
   }
   // Text dragged within or into the editor is ordinary editing.
-  if (dragSource === 'editor' || (e.target === editor && !hasFiles(e))) return;
+  if (dragSource === 'editor' || (sourceEditor?.containsTarget(e.target) && !hasFiles(e))) return;
   e.preventDefault();
 });
 document.addEventListener('drop', (e) => {
   const fromApp = dragSource !== 'outside';
-  if (e.target === editor && !hasFiles(e) && dragSource !== 'app') return;
+  if (sourceEditor?.containsTarget(e.target) && !hasFiles(e) && dragSource !== 'app') return;
   e.preventDefault();
   dragDepth = 0;
   dropEl.hidden = true;
@@ -1514,9 +1595,8 @@ const shared = params.get('text');
 const urlParam = params.get('url');
 
 function startDraft(): void {
-  editor.value = localStorage.getItem(DRAFT_KEY) ?? SAMPLE;
+  sourceEditor?.setValue(localStorage.getItem(DRAFT_KEY) ?? SAMPLE);
   setDocName(fileName);
-  renderGutter(true);
   updateCursor();
   updateCounts();
   updateSaveState();

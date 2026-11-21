@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: ws:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: ws:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="theme-color" content="#1c1a24" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -103,8 +103,7 @@
           <span class="pane-tag">Markdown2 source</span>
         </div>
         <div class="editor-wrap">
-          <div id="gutter" class="gutter" aria-hidden="true"><div id="gutter-lines"></div></div>
-          <textarea id="editor" wrap="off" spellcheck="false" autocapitalize="off" aria-label="Markdown2 source"></textarea>
+          <div id="editor-host" class="editor-host" aria-label="Markdown2 source"></div>
         </div>
       </div>
 
@@ -205,6 +204,62 @@
       </form>
     </dialog>
 
+    <dialog id="encrypt-dlg" class="dlg" aria-labelledby="encrypt-title">
+      <form method="dialog">
+        <span class="dlg-orn" aria-hidden="true">🔐</span>
+        <h2 id="encrypt-title">Encrypt with age</h2>
+        <p id="encrypt-desc" class="dlg-sub"></p>
+        <fieldset class="choice">
+          <legend>Encryption key</legend>
+          <label class="choice-card"><input type="radio" name="kind" value="passphrase" checked /><span><b>Passphrase</b><small>A shared secret phrase</small></span></label>
+          <label class="choice-card"><input type="radio" name="kind" value="recipient" /><span><b>age recipient</b><small>age1… public key</small></span></label>
+        </fieldset>
+        <label class="field"><span id="encrypt-key-label">Passphrase</span> <input id="encrypt-key" type="password" name="key" autocomplete="off" required /></label>
+        <div class="field-row">
+          <label id="encrypt-type-wrap" class="field">Media type <input id="encrypt-type" type="text" name="type" list="m2-media-types" value="text/markdown" /></label>
+          <label class="field">Title <small>(optional)</small> <input id="encrypt-title-input" type="text" name="title" placeholder="e.g. Private notes" /></label>
+        </div>
+        <label class="opt dlg-check"><input id="encrypt-wrap" type="checkbox" name="wrapped" checked /><span>Wrap in <code>&lt;!-- --&gt;</code> compatibility comment</span></label>
+        <p class="dlg-note">Keys stay in memory for this operation only and never touch storage.</p>
+        <menu>
+          <button class="btn" value="cancel" formnovalidate>Cancel</button>
+          <button class="btn primary" value="ok">Encrypt</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="wrap-dlg" class="dlg" aria-labelledby="wrap-title">
+      <form method="dialog">
+        <span class="dlg-orn" aria-hidden="true">❦</span>
+        <h2 id="wrap-title">Wrap as resource block</h2>
+        <p class="dlg-sub">Turn the selected text into an opaque, typed Markdown2 resource.</p>
+        <div class="field-row">
+          <label class="field">Media type <input id="wrap-type" type="text" name="type" list="m2-media-types" value="text/markdown" required /></label>
+          <label class="field">Token <input id="wrap-token" type="text" name="token" value="RES" pattern="[A-Za-z_][A-Za-z0-9_.-]*" required /></label>
+        </div>
+        <label class="field">Title <small>(optional)</small> <input id="wrap-title-input" type="text" name="title" placeholder="Human-readable label" /></label>
+        <label class="opt dlg-check"><input id="wrap-compat" type="checkbox" name="wrapped" /><span>Wrap in <code>&lt;!-- --&gt;</code> compatibility comment</span></label>
+        <menu>
+          <button class="btn" value="cancel" formnovalidate>Cancel</button>
+          <button class="btn primary" value="ok">Wrap</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <datalist id="m2-media-types">
+      <option value="text/markdown"></option>
+      <option value="text/plain"></option>
+      <option value="application/json"></option>
+      <option value="application/yaml"></option>
+      <option value="text/csv"></option>
+      <option value="image/svg+xml"></option>
+      <option value="text/css"></option>
+      <option value="text/vnd.mermaid"></option>
+      <option value="text/vnd.graphviz"></option>
+      <option value="application/x-tex"></option>
+      <option value="application/geo+json"></option>
+    </datalist>
+
     <dialog id="help" class="dlg" aria-labelledby="help-title">
       <form method="dialog">
         <span class="dlg-orn" aria-hidden="true">❦</span>
@@ -216,6 +271,9 @@
           <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">1</kbd> <kbd class="kbd">2</kbd> <kbd class="kbd">3</kbd></dt><dd>Write · Split · Read</dd>
           <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">.</kbd></dt><dd>Show or hide the inspector</dd>
           <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">⇧</kbd><kbd class="kbd">U</kbd></dt><dd>Unstyled view</dd>
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">F</kbd></dt><dd>Find &amp; replace in source</dd>
+          <dt><kbd class="kbd kbd-mod">Ctrl</kbd><kbd class="kbd">⇧</kbd><kbd class="kbd">[</kbd> <kbd class="kbd">]</kbd></dt><dd>Fold · Unfold section or resource</dd>
+          <dt><kbd class="kbd">Right-click</kbd></dt><dd>Encrypt, compress, decrypt or unwrap selection</dd>
           <dt><kbd class="kbd">?</kbd></dt><dd>This sheet</dd>
         </dl>
         <p class="dlg-note">Drop a <code>.md</code> file anywhere to open it. Nothing unlocks or fetches on its own: every key and every remote resource waits for you.</p>

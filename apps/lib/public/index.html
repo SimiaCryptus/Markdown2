@@ -1,174 +1,185 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'"
-    />
-    <meta name="markdown2-permissions" content="log-level silent" />
-    <meta name="theme-color" content="#1c1a24" />
-    <title>markdown2.js · Markdown2 for your own pages</title>
-    <link rel="icon" href="../icon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="./example.css" />
-    <script type="module" src="./index.js"></script>
-  </head>
-  <body>
-    <header class="top">
-      <div class="wrap">
-        <p class="kicker">markdown2.js <span id="version" class="pill">…</span></p>
-        <h1>Markdown, plus opaque, typed, nestable resources. In your page.</h1>
-        <p class="lede">
-          A drop-in replacement for <a href="https://marked.js.org" rel="noopener noreferrer">marked</a> that
-          carries diagrams, math, music, charts, maps, 3D scenes, live calculators, encrypted sections and whole
-          documents inside Markdown — with a live view that asks before it unlocks or fetches anything.
-        </p>
-        <ul class="proof" aria-label="Measured on this page, just now">
-          <li><strong id="proof-checks">…</strong><span>security checks passed, live, in your browser</span></li>
-          <li><strong id="proof-speed">…</strong><span>to parse 600 resources, measured here</span></li>
-          <li><strong>0</strong><span>inline scripts, eval calls or inline styles: strict CSP everywhere</span></li>
-          <li><strong>1</strong><span>ES module. <code>age</code> encryption &amp; rich sandboxes load on demand</span></li>
-        </ul>
-        <nav class="toc" aria-label="Showcase pages">
-          <span class="toc-label">Start</span>
-          <a href="./index.html">Overview</a>
-          <a href="./playground.html">Playground</a>
-          <span class="toc-label">Rich media</span>
-          <a href="./diagrams.html">Diagrams</a>
-          <a href="./math.html">Math</a>
-          <a href="./music.html">Music</a>
-          <a href="./charts.html">Charts</a>
-          <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
-          <a href="./calculators.html">Calculators</a>
-          <span class="toc-label">Core &amp; API</span>
-          <a href="./lab.html">Lab &amp; Nesting</a>
-          <a href="./security.html">Security &amp; Permissions</a>
-          <a href="./embed.html">Embed &amp; Speed</a>
-          <a href="../index.html">The reader app →</a>
-        </nav>
-      </div>
-    </header>
 
-    <main class="wrap">
-      <p id="error" class="banner" role="alert" hidden></p>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="markdown2-permissions" content="log-level silent" />
+  <meta name="theme-color" content="#1c1a24" />
+  <title>markdown2.js · Markdown2 for your own pages</title>
+  <link rel="icon" href="../icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="./example.css" />
+  <script type="module" src="./index.js"></script>
+</head>
 
-      <h2 class="part">Rich content &amp; media</h2>
-      <section class="feature-grid" aria-label="Rich content showcases">
-        <a class="feature-card" href="./diagrams.html">
-          <h3><span>Diagrams</span><span class="arrow">→</span></h3>
-          <p>Mermaid flowcharts &amp; sequence diagrams, Graphviz (WebAssembly, 8 layout engines), WaveDrom timing &amp; registers, and inert SVGs.</p>
-          <div class="media-tags">
-            <span class="media-tag">text/vnd.mermaid</span>
-            <span class="media-tag">text/vnd.graphviz</span>
-            <span class="media-tag">text/vnd.wavedrom</span>
-            <span class="media-tag">image/svg+xml</span>
-          </div>
-        </a>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="kicker">markdown2.js <span id="version" class="pill">…</span></p>
+      <h1>Markdown, plus opaque, typed, nestable resources. In your page.</h1>
+      <p class="lede">
+        A drop-in replacement for <a href="https://marked.js.org" rel="noopener noreferrer">marked</a> that
+        carries diagrams, math, music, charts, maps, 3D scenes, live calculators, encrypted sections and whole
+        documents inside Markdown — with a live view that asks before it unlocks or fetches anything.
+      </p>
+      <ul class="proof" aria-label="Measured on this page, just now">
+        <li><strong id="proof-checks">…</strong><span>security checks passed, live, in your browser</span></li>
+        <li><strong id="proof-speed">…</strong><span>to parse 600 resources, measured here</span></li>
+        <li><strong>0</strong><span>inline scripts, eval calls or inline styles: strict CSP everywhere</span></li>
+        <li><strong>1</strong><span>ES module. <code>age</code> encryption &amp; rich sandboxes load on demand</span>
+        </li>
+      </ul>
+      <nav class="toc" aria-label="Showcase pages">
+        <span class="toc-label">Start</span>
+        <a href="./index.html">Overview</a>
+        <a href="./playground.html">Playground</a>
+        <span class="toc-label">Rich media</span>
+        <a href="./diagrams.html">Diagrams</a>
+        <a href="./math.html">Math</a>
+        <a href="./music.html">Music</a>
+        <a href="./charts.html">Charts</a>
+        <a href="./maps-3d.html">Maps, 3D &amp; Code</a>
+        <a href="./calculators.html">Calculators</a>
+        <span class="toc-label">Core &amp; API</span>
+        <a href="./lab.html">Lab &amp; Nesting</a>
+        <a href="./security.html">Security &amp; Permissions</a>
+        <a href="./embed.html">Embed &amp; Speed</a>
+        <a href="../index.html">The reader app →</a>
+      </nav>
+    </div>
+  </header>
 
-        <a class="feature-card" href="./math.html">
-          <h3><span>Mathematics (MathJax)</span><span class="arrow">→</span></h3>
-          <p>Block-level TeX (base + AMS packages) and MathML rendered by MathJax to standalone SVG images in an opaque-origin sandbox.</p>
-          <div class="media-tags">
-            <span class="media-tag">application/x-tex</span>
-            <span class="media-tag">application/mathml+xml</span>
-            <span class="media-tag">```math</span>
-          </div>
-        </a>
+  <main class="wrap">
+    <p id="error" class="banner" role="alert" hidden></p>
 
-        <a class="feature-card" href="./music.html">
-          <h3><span>Music (Tartlet)</span><span class="arrow">→</span></h3>
-          <p>Playable Strudel-style music sketches parsed in a closed language — synthesized locally with zero network, seeded variations and a safety limiter.</p>
-          <div class="media-tags">
-            <span class="media-tag">text/vnd.tartlet</span>
-            <span class="media-tag">```tartlet</span>
-            <span class="media-tag">tartlet-seed</span>
-          </div>
-        </a>
+    <h2 class="part">Rich content &amp; media</h2>
+    <section class="feature-grid" aria-label="Rich content showcases">
+      <a class="feature-card" href="./diagrams.html">
+        <h3><span>Diagrams</span><span class="arrow">→</span></h3>
+        <p>Mermaid flowcharts &amp; sequence diagrams, Graphviz (WebAssembly, 8 layout engines), WaveDrom timing &amp;
+          registers, and inert SVGs.</p>
+        <div class="media-tags">
+          <span class="media-tag">text/vnd.mermaid</span>
+          <span class="media-tag">text/vnd.graphviz</span>
+          <span class="media-tag">text/vnd.wavedrom</span>
+          <span class="media-tag">image/svg+xml</span>
+        </div>
+      </a>
 
-        <a class="feature-card" href="./charts.html">
-          <h3><span>Charts</span><span class="arrow">→</span></h3>
-          <p>Offline interactive Plotly figures (2D &amp; 3D surfaces), Vega-Lite grammar-of-graphics specs, and permission-gated Google Charts with table fallbacks.</p>
-          <div class="media-tags">
-            <span class="media-tag">vnd.plotly.v1+json</span>
-            <span class="media-tag">vnd.vegalite.v5+json</span>
-            <span class="media-tag">vnd.google.charts+json</span>
-          </div>
-        </a>
+      <a class="feature-card" href="./math.html">
+        <h3><span>Mathematics (MathJax)</span><span class="arrow">→</span></h3>
+        <p>Block-level TeX (base + AMS packages) and MathML rendered by MathJax to standalone SVG images in an
+          opaque-origin sandbox.</p>
+        <div class="media-tags">
+          <span class="media-tag">application/x-tex</span>
+          <span class="media-tag">application/mathml+xml</span>
+          <span class="media-tag">```math</span>
+        </div>
+      </a>
 
-        <a class="feature-card" href="./maps-3d.html">
-          <h3><span>Maps, 3D &amp; Code</span><span class="arrow">→</span></h3>
-          <p>Interactive GeoJSON maps (MapLibre GL JS + OpenFreeMap, consent-gated), X3D 3D scenes (X_ITE), and sandboxed read-only Monaco code resources.</p>
-          <div class="media-tags">
-            <span class="media-tag">application/geo+json</span>
-            <span class="media-tag">model/x3d+xml</span>
-            <span class="media-tag">text/javascript</span>
-          </div>
-        </a>
+      <a class="feature-card" href="./music.html">
+        <h3><span>Music (Tartlet)</span><span class="arrow">→</span></h3>
+        <p>Playable Strudel-style music sketches parsed in a closed language — synthesized locally with zero network,
+          seeded variations and a safety limiter.</p>
+        <div class="media-tags">
+          <span class="media-tag">text/vnd.tartlet</span>
+          <span class="media-tag">```tartlet</span>
+          <span class="media-tag">tartlet-seed</span>
+        </div>
+      </a>
 
-        <a class="feature-card" href="./calculators.html">
-          <h3><span>Live Calculators</span><span class="arrow">→</span></h3>
-          <p>Reactive DataCalculator workbooks: pure formulas, typed inputs, live forms and editable sheet grids — all offline in an opaque-origin sandbox.</p>
-          <div class="media-tags">
-            <span class="media-tag">text/vnd.datacalc</span>
-            <span class="media-tag">vnd.datacalc+json</span>
-            <span class="media-tag">```datacalc</span>
-          </div>
-        </a>
-      </section>
+      <a class="feature-card" href="./charts.html">
+        <h3><span>Charts</span><span class="arrow">→</span></h3>
+        <p>Offline interactive Plotly figures (2D &amp; 3D surfaces), Vega-Lite grammar-of-graphics specs, and
+          permission-gated Google Charts with table fallbacks.</p>
+        <div class="media-tags">
+          <span class="media-tag">vnd.plotly.v1+json</span>
+          <span class="media-tag">vnd.vegalite.v5+json</span>
+          <span class="media-tag">vnd.google.charts+json</span>
+        </div>
+      </a>
 
-      <h2 class="part">Core format, security &amp; tools</h2>
-      <section class="feature-grid" aria-label="Core format showcases">
-        <a class="feature-card" href="./playground.html">
-          <h3><span>Interactive Playground</span><span class="arrow">→</span></h3>
-          <p>13 live scenes in a 3-column studio: edit source, drive <code>mount()</code> via its app API, inspect <code>lexer()</code> X-ray tokens and consent logs.</p>
-          <div class="media-tags">
-            <span class="media-tag">mount()</span>
-            <span class="media-tag">age encryption</span>
-            <span class="media-tag">lexer() X-ray</span>
-          </div>
-        </a>
+      <a class="feature-card" href="./maps-3d.html">
+        <h3><span>Maps, 3D &amp; Code</span><span class="arrow">→</span></h3>
+        <p>Interactive GeoJSON maps (MapLibre GL JS + OpenFreeMap, consent-gated), X3D 3D scenes (X_ITE), and sandboxed
+          read-only Monaco code resources.</p>
+        <div class="media-tags">
+          <span class="media-tag">application/geo+json</span>
+          <span class="media-tag">model/x3d+xml</span>
+          <span class="media-tag">text/javascript</span>
+        </div>
+      </a>
 
-        <a class="feature-card" href="./lab.html">
-          <h3><span>Resource Lab &amp; Matryoshka</span><span class="arrow">→</span></h3>
-          <p>Pack any payload with <code>resource()</code>, gzip or <code>age</code>-encrypt in-browser with collision-free terminators, and test 16-level document nesting.</p>
-          <div class="media-tags">
-            <span class="media-tag">resource()</span>
-            <span class="media-tag">base64 gzip</span>
-            <span class="media-tag">base64 age</span>
-            <span class="media-tag">text/markdown</span>
-          </div>
-        </a>
+      <a class="feature-card" href="./calculators.html">
+        <h3><span>Live Calculators</span><span class="arrow">→</span></h3>
+        <p>Reactive DataCalculator workbooks: pure formulas, typed inputs, live forms and editable sheet grids — all
+          offline in an opaque-origin sandbox.</p>
+        <div class="media-tags">
+          <span class="media-tag">text/vnd.datacalc</span>
+          <span class="media-tag">vnd.datacalc+json</span>
+          <span class="media-tag">```datacalc</span>
+        </div>
+      </a>
+    </section>
 
-        <a class="feature-card" href="./security.html">
-          <h3><span>Security Red Team &amp; Permissions</span><span class="arrow">→</span></h3>
-          <p>9 hostile documents tested live in your browser, plus upfront permission whitelisting (<code>permissions</code>, <code>&lt;meta&gt;</code>, element attributes) and guarantees.</p>
-          <div class="media-tags">
-            <span class="media-tag">fail-closed</span>
-            <span class="media-tag">permissions</span>
-            <span class="media-tag">text/uri-list</span>
-          </div>
-        </a>
+    <h2 class="part">Core format, security &amp; tools</h2>
+    <section class="feature-grid" aria-label="Core format showcases">
+      <a class="feature-card" href="./playground.html">
+        <h3><span>Interactive Playground</span><span class="arrow">→</span></h3>
+        <p>13 live scenes in a 3-column studio: edit source, drive <code>mount()</code> via its app API, inspect
+          <code>lexer()</code> X-ray tokens and consent logs.</p>
+        <div class="media-tags">
+          <span class="media-tag">mount()</span>
+          <span class="media-tag">age encryption</span>
+          <span class="media-tag">lexer() X-ray</span>
+        </div>
+      </a>
 
-        <a class="feature-card" href="./embed.html">
-          <h3><span>Embed Guide, Handlers &amp; Speed</span><span class="arrow">→</span></h3>
-          <p>Drop-in <code>marked.parse()</code> (sync &amp; async), <code>&lt;markdown2-view&gt;</code>, classic UMD script, custom handlers/hooks, and live throughput benchmarks.</p>
-          <div class="media-tags">
-            <span class="media-tag">marked.parse()</span>
-            <span class="media-tag">&lt;markdown2-view&gt;</span>
-            <span class="media-tag">handlers</span>
-          </div>
-        </a>
-      </section>
+      <a class="feature-card" href="./lab.html">
+        <h3><span>Resource Lab &amp; Matryoshka</span><span class="arrow">→</span></h3>
+        <p>Pack any payload with <code>resource()</code>, gzip or <code>age</code>-encrypt in-browser with
+          collision-free terminators, and test 16-level document nesting.</p>
+        <div class="media-tags">
+          <span class="media-tag">resource()</span>
+          <span class="media-tag">base64 gzip</span>
+          <span class="media-tag">base64 age</span>
+          <span class="media-tag">text/markdown</span>
+        </div>
+      </a>
 
-      <h2 class="part">Quick start</h2>
-      <section class="card">
-        <h2>One ES module, zero build step</h2>
-        <p>
-          Use <code>marked.parse()</code> as a synchronous drop-in, or <code>mount()</code> with
-          <code>sandboxHandlers()</code> for the full interactive rich-media and permission-aware view.
-        </p>
-        <pre><code>&lt;div id="out"&gt;&lt;/div&gt;
+      <a class="feature-card" href="./security.html">
+        <h3><span>Security Red Team &amp; Permissions</span><span class="arrow">→</span></h3>
+        <p>9 hostile documents tested live in your browser, plus upfront permission whitelisting
+          (<code>permissions</code>, <code>&lt;meta&gt;</code>, element attributes) and guarantees.</p>
+        <div class="media-tags">
+          <span class="media-tag">fail-closed</span>
+          <span class="media-tag">permissions</span>
+          <span class="media-tag">text/uri-list</span>
+        </div>
+      </a>
+
+      <a class="feature-card" href="./embed.html">
+        <h3><span>Embed Guide, Handlers &amp; Speed</span><span class="arrow">→</span></h3>
+        <p>Drop-in <code>marked.parse()</code> (sync &amp; async), <code>&lt;markdown2-view&gt;</code>, classic UMD
+          script, custom handlers/hooks, and live throughput benchmarks.</p>
+        <div class="media-tags">
+          <span class="media-tag">marked.parse()</span>
+          <span class="media-tag">&lt;markdown2-view&gt;</span>
+          <span class="media-tag">handlers</span>
+        </div>
+      </a>
+    </section>
+
+    <h2 class="part">Quick start</h2>
+    <section class="card">
+      <h2>One ES module, zero build step</h2>
+      <p>
+        Use <code>marked.parse()</code> as a synchronous drop-in, or <code>mount()</code> with
+        <code>sandboxHandlers()</code> for the full interactive rich-media and permission-aware view.
+      </p>
+      <pre><code>&lt;div id="out"&gt;&lt;/div&gt;
 &lt;script type="module"&gt;
   import { mount, sandboxHandlers } from 'https://md2.cognotik.com/lib/markdown2.js';
 
@@ -176,14 +187,16 @@
     handlers: sandboxHandlers(), // Mermaid, Graphviz, MathJax, Tartlet, Plotly, Vega-Lite, Maps, 3D, Calculators
   });
 &lt;/script&gt;</code></pre>
-      </section>
-    </main>
+    </section>
+  </main>
 
-    <footer class="foot wrap">
-      <p>
-        Markdown2 is an open draft. Specification, reader and this library:
-        <a href="https://github.com/SimiaCryptus/Markdown2" rel="noopener noreferrer">github.com/SimiaCryptus/Markdown2</a>.
-      </p>
-    </footer>
-  </body>
+  <footer class="foot wrap">
+    <p>
+      Markdown2 is an open draft. Specification, reader and this library:
+      <a href="https://github.com/SimiaCryptus/Markdown2"
+        rel="noopener noreferrer">github.com/SimiaCryptus/Markdown2</a>.
+    </p>
+  </footer>
+</body>
+
 </html>
